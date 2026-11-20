@@ -64,9 +64,12 @@ Name: "{autodesktop}\列車無線サーバー"; Filename: "{app}\TrainRadioServe
 Name: "{commonstartup}\列車無線サーバー"; Filename: "{app}\TrainRadioServer.exe"; Parameters: "--minimized"; Components: server; Tasks: autostart
 
 [Run]
+; 上書き更新で同じ規則が増えないよう、追加の前に一度消す
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""列車無線サーバー"""; Flags: runhidden; Tasks: firewall
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""列車無線サーバー"" dir=in action=allow program=""{app}\TrainRadioServerCore.exe"" enable=yes"; Flags: runhidden; Tasks: firewall
-Filename: "{app}\TrainRadioServer.exe"; Description: "サーバーを起動する"; Components: server; Flags: postinstall nowait skipifsilent
-Filename: "{app}\TrainRadio.exe"; Description: "列車無線を起動する"; Components: client; Flags: postinstall nowait skipifsilent
+; アプリからの更新(/SILENT /LAUNCH=client|server)では、更新を始めたアプリだけを起動し直す
+Filename: "{app}\TrainRadioServer.exe"; Description: "サーバーを起動する"; Components: server; Flags: postinstall nowait; Check: ShouldLaunch('server')
+Filename: "{app}\TrainRadio.exe"; Description: "列車無線を起動する"; Components: client; Flags: postinstall nowait; Check: ShouldLaunch('client')
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/f /im TrainRadioServer.exe"; Flags: runhidden; RunOnceId: "KillServer"
@@ -91,6 +94,12 @@ begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im TrainRadioServerCore.exe', '', SW_HIDE, ewWaitUntilTerminated, code);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im TrainRadio.exe', '', SW_HIDE, ewWaitUntilTerminated, code);
   Result := '';
+end;
+
+// 通常のインストールでは完了画面の選択どおり。サイレント時は /LAUNCH= で指定されたものだけ起動する
+function ShouldLaunch(Name: String): Boolean;
+begin
+  Result := not WizardSilent() or (Pos(Name, ExpandConstant('{param:LAUNCH|}')) > 0);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;

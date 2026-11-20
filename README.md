@@ -16,6 +16,8 @@
   - 設定は `C:\ProgramData\TrainRadio\config.json`、録音は `ドキュメント\TrainRadio\recordings` に保存します。
   - PC版(`TrainRadio.exe`)は WebView2 で動く独立したアプリです(Windows 11 は標準搭載)。送話キーは他のアプリが前面でも効きます。
 - **Android**: `TrainRadio-x.y.z.apk` を端末に入れてインストール(提供元不明アプリの許可が必要)。新しい版は上書きインストールできます。
+- **アップデート**: PC版・サーバー管理アプリ・Android版は、起動時に Releases の最新版を確認し、新しい版があれば通知します(設定の「アップデート」でオフにできます)。設定の「更新を確認」からも確認でき、「インストール」でダウンロードして更新します。Windows はインストーラーが自動で上書きし、更新したアプリを起動し直します(管理者の許可を求められます)。Android はダウンロード後にインストール画面が開きます。
+  - 確認先は `build/update.js`、Windows のダウンロードと起動は `build/update.rs`(両方のTauriアプリで共有)です。
 
 ## ビルドとリリース
 `v1.2.3` のようなタグを push すると、GitHub Actions がインストーラーとAPKをビルドして Releases に登録します(Actions 画面から手動実行するとビルドのみ)。

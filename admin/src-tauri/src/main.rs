@@ -173,10 +173,19 @@ fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") { let _ = w.unminimize(); let _ = w.show(); let _ = w.set_focus(); }
 }
 
+#[path = "../../../build/update.rs"]
+mod update;
+
+/// 新しい版のインストーラーをダウンロードして起動する(更新後はこのアプリを起動し直す)
+#[tauri::command]
+async fn install_update(url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || update::download_and_run(&url, "server")).await.map_err(|e| e.to_string())?
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app))) // 二重起動時は既存の画面を出す
-        .invoke_handler(tauri::generate_handler![status, logs, start_server, stop_server, restart_server, open_path])
+        .invoke_handler(tauri::generate_handler![status, logs, start_server, stop_server, restart_server, open_path, install_update])
         .setup(|app| {
             let data_dir = PathBuf::from(std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".into())).join("TrainRadio");
             let docs_dir = app.path().document_dir().unwrap_or_else(|_| data_dir.clone());

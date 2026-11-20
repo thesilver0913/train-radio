@@ -78,6 +78,8 @@ cds-tag.alert{animation:blink 1s steps(1,end) infinite}
 /* 共通 */
 #conn{position:fixed;left:50%;top:8px;transform:translateX(-50%);background:var(--cds-button-danger-primary);color:var(--cds-text-on-color);padding:4px 16px;z-index:30;font-size:12px}
 #toasts{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:grid;gap:8px;z-index:9100;width:min(420px,92vw)}
-#toasts cds-inline-notification{max-width:none;margin:0}
+#toasts cds-inline-notification,#toasts cds-actionable-notification{max-width:none;margin:0}
+.updinfo{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;font-size:14px}.updinfo span:nth-child(odd){color:var(--cds-text-secondary)}
+.updact{display:flex;gap:8px;flex-wrap:wrap}.updmsg{margin:0;font-size:12px;color:var(--cds-text-secondary)}.updmsg:empty{display:none}.updmsg.bad{color:var(--cds-text-error)}
 @media (max-width:900px){.dgrid{grid-template-columns:1fr;overflow:auto}}
 @media (prefers-reduced-motion:reduce){.lamp.blink,.call.ringing,cds-tag.alert,#hsOverlay.ring{animation-duration:2s}}

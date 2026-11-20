@@ -25,6 +25,9 @@ const bridge = T ? {
   open: async (p) => console.log('open', p), onLog: () => {},
 };
 
+// アップデート(管理アプリのときだけ。インストーラーで更新すると管理アプリ・サーバーとも置き換わる)
+const UH = T ? { kind: 'setup', version: () => T.app.getVersion(), install: (url) => T.core.invoke('install_update', { url }) } : null;
+
 let st = { running: false, ready: null, token: '', exitCode: null, lastError: '' };
 const apiUrl = (p) => `${st.ready.scheme}://127.0.0.1:${st.ready.port}/admin/${p}${p.includes('?') ? '&' : '?'}t=${encodeURIComponent(st.token)}`;
 const online = () => st.running && !!st.ready;
@@ -191,6 +194,7 @@ async function tick() {
 (async () => {
   try { addLog(await bridge.logs()); } catch (e) {}
   bridge.onLog((line) => addLog([line]));
+  if (UH) { $('#updBox').innerHTML = Updater.section('h2'); Updater.bind($('#updBox'), UH); Updater.startup(UH, $('#updNotice')); }
   await tick(); setInterval(tick, 1000);
 })();
 })();

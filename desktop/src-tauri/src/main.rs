@@ -54,9 +54,18 @@ fn allow_microphone(window: &tauri::WebviewWindow) {
     });
 }
 
+#[path = "../../../build/update.rs"]
+mod update;
+
+/// 新しい版のインストーラーをダウンロードして起動する(更新後はこのアプリを起動し直す)
+#[tauri::command]
+async fn install_update(url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || update::download_and_run(&url, "client")).await.map_err(|e| e.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![set_ptt_key])
+        .invoke_handler(tauri::generate_handler![set_ptt_key, install_update])
         .setup(|app| {
             #[cfg(windows)]
             if let Some(w) = app.get_webview_window("main") { allow_microphone(&w); }

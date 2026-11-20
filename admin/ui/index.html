@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="vendor/carbon.css">
 <link rel="stylesheet" href="admin.css">
 <script src="vendor/carbon.js"></script>
+<script src="vendor/update.js"></script>
 </head>
 <body>
 <header class="bar">
@@ -27,6 +28,7 @@
 </cds-tabs>
 
 <main>
+  <div id="updNotice"></div>
   <section id="p-status" role="tabpanel" aria-labelledby="tab-status">
     <div id="errBox"></div>
     <div class="tiles">
@@ -91,6 +93,7 @@
       </div>
       <div id="cfgMsg"></div>
     </form>
+    <div id="updBox" class="form"></div>
   </section>
 
   <section id="p-log" role="tabpanel" aria-labelledby="tab-log" hidden>

@@ -2,6 +2,7 @@
 (() => {
 const $ = (s, r = document) => r.querySelector(s);
 const D = window.desktop || null;                         // PC版(Tauri / pc-client)のときのみ存在
+const UH = window.updateHost || null;                     // アップデート可能な版(Tauri / Android)のときのみ存在
 const CH_NAME = { 2: '2ch(下電)', 80: '80ch(南北線)', 81: '81ch(東西線)', 85: '85ch(非常用)' };
 const OPEN = (ch) => ch === 2 || ch === 85; // 個別通話・受話器・試験のないチャンネル
 const DEF = { ch: 80, trainNo: '', vehicle: 'shimoden', server: '', pttKey: 'F6', volDisp: 7, volTrain: 7, drive: 5, inDev: '', outDev: '', scale: 1, onTop: false };
@@ -267,6 +268,7 @@ function openSettings() {
     ${isTrain ? `<cds-text-input id="sNo2" label="列車番号" maxlength="6" value="${esc(cfg.trainNo)}" autocomplete="off"></cds-text-input>
     ${select('sVeh', '車種', [['shimoden', '下電車'], ['chikatetsu', '地下鉄車']], cfg.vehicle)}` : ''}
     <div><cds-button id="sApply" kind="primary" size="md">適用</cds-button></div></section>
+  ${UH ? Updater.section('h3') : ''}
   <section><div><cds-button id="sLogout" kind="danger" size="md">ログアウト</cds-button></div></section>`;
   openModal('設定', html, async (b) => {
     const slide = (id, k) => b.querySelector(id).addEventListener('cds-slider-changed', (e) => { cfg[k] = Number(e.target.value); saveCfg(); applyAudioCfg(); });
@@ -303,6 +305,7 @@ function openSettings() {
       if (isTrain) { no = b.querySelector('#sNo2').value.trim().toUpperCase(); veh = b.querySelector('#sVeh').value; if (!/^[0-9A-Z]{1,6}$/.test(no) || no === '12306') return toast('列車番号は半角英数字(6文字まで)で入力してください(12306は指令専用です)', 'warn'); }
       Object.assign(cfg, { ch, trainNo: no, vehicle: veh }); saveCfg(); sendJson({ t: 'hello', key, ch, trainNo: no, vehicle: veh, password: pw }); closeModal();
     });
+    if (UH) Updater.bind(b, UH);
     b.querySelector('#sLogout').addEventListener('click', () => { sendJson({ t: 'logout' }); teardown(); closeModal(); showLogin(); });
   });
 }
@@ -332,6 +335,7 @@ function openDetail() {
 // ------------------------------------------------------------ 起動
 $('#fCh').value = String(cfg.ch); $('#fNo').value = cfg.trainNo; $('#fVeh').value = cfg.vehicle; $('#fSrv').value = cfg.server; syncLoginRows();
 if (D) { D.setPttKey(cfg.pttKey); D.setAlwaysOnTop(cfg.onTop); }
+if (UH) Updater.startup(UH, $('#toasts'));
 document.addEventListener('contextmenu', (e) => { if ($('#train').hidden === false) e.preventDefault(); });
 window.__radio = { audio, loops, state: () => ({ S, DS, welcome }) };   // デバッグ・自動テスト用
 })();

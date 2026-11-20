@@ -1,7 +1,10 @@
 // PC版(pc-client の起動プログラム経由で開いた場合)だけ window.desktop を用意する。
 // 送話キー(全体ホットキー)・最前面固定は、同じPC上の起動プログラムに /__ctl で依頼する。
-// Android(アプリ内)では何もしない(window.desktop は未定義のまま)。
+// Android(アプリ内)では window.desktop は未定義のまま(アップデート用の updateHost だけ用意する)。
 (() => {
+  // アップデートの確認・インストール先(update.js が使う)。Tauri版はインストーラー、Android版はAPK。pc-client(ブラウザ)では無し
+  window.updateHost = window.__TAURI__ ? { kind: 'setup', version: () => window.__TAURI__.app.getVersion(), install: (url) => window.__TAURI__.core.invoke('install_update', { url }) }
+    : window.TrainRadioApp ? { kind: 'apk', version: async () => window.TrainRadioApp.version(), install: async (url) => window.TrainRadioApp.installUpdate(url) } : null;
   // PC版(Tauri・インストール版): 送話キーはRust側で検知、最前面・サイズはウィンドウAPIで
   if (window.__TAURI__) {
     const T = window.__TAURI__, w = T.window.getCurrentWindow();
