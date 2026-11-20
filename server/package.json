@@ -1,2 +1,2 @@
-{ "name": "train-radio-server", "version": "3.0.0", "private": true, "description": "列車無線風通話アプリ サーバー(依存パッケージなし / Node.js 18以上)",
+{ "name": "train-radio-server", "version": "4.0.0", "private": true, "description": "列車無線風通話アプリ サーバー(依存パッケージなし / Node.js 18以上)",
   "main": "server.js", "scripts": { "start": "node server.js", "test": "node test.js" } }
