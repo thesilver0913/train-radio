@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#15171a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>列車無線</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="login" class="view">
+  <form id="loginForm" autocomplete="off">
+    <h1>列車無線</h1>
+    <label>チャンネル
+      <select id="fCh"><option value="2">2ch(下電)</option><option value="80">80ch(南北線)</option><option value="81">81ch(東西線)</option></select>
+    </label>
+    <label>列車番号
+      <input id="fNo" inputmode="numeric" maxlength="6" placeholder="例 6110">
+    </label>
+    <label id="rowVeh">車種
+      <select id="fVeh"><option value="shimoden">下電車</option><option value="chikatetsu">地下鉄車</option></select>
+    </label>
+    <label id="rowPw" hidden>指令パスワード
+      <input id="fPw" type="password">
+    </label>
+    <label id="rowSrv">サーバー
+      <input id="fSrv" placeholder="例 http://192.168.0.10:8080" autocapitalize="off" spellcheck="false">
+    </label>
+    <button id="fGo" class="primary">接続</button>
+    <p id="loginMsg" role="status"></p>
+  </form>
+</main>
+
+<main id="train" class="view" hidden>
+  <div id="radioWrap">
+    <div id="radio" style="--s:1">
+      <img class="layer" src="img/base.png" alt="" draggable="false">
+      <canvas id="seg" class="layer" width="254" height="605"></canvas>
+      <img id="lPower" class="layer lamp" src="img/power.png" alt="" draggable="false">
+      <img id="lBusy" class="layer lamp" src="img/busy.png" alt="" draggable="false">
+      <img id="lGuard" class="layer lamp" src="img/guard.png" alt="" draggable="false">
+      <img id="lTest" class="layer lamp" src="img/test.png" alt="" draggable="false">
+      <div id="hsOverlay" style="--x:112;--y:38;--w:132;--h:502"></div>
+      <button class="zone" id="zHandset" aria-label="受話器(指令呼出)" style="--x:112;--y:38;--w:132;--h:502"></button>
+      <button class="zone" id="zGuard" aria-label="防護発報" style="--x:32;--y:44;--w:56;--h:58"></button>
+      <button class="zone" id="zTest" aria-label="試験" style="--x:38;--y:268;--w:44;--h:31"></button>
+      <button class="zone" id="zVup" aria-label="音量+" style="--x:132;--y:177;--w:34;--h:22"></button>
+      <button class="zone" id="zVdn" aria-label="音量-" style="--x:188;--y:177;--w:34;--h:22"></button>
+    </div>
+  </div>
+  <div class="tbar">
+    <div id="trainInfo"></div>
+    <button id="ptt" class="ptt">送話</button>
+    <button id="btnSettings">設定</button>
+  </div>
+</main>
+
+<main id="disp" class="view" hidden>
+  <header class="dbar">
+    <div class="dtitle"><b id="dCh"></b><span id="dMeta"></span></div>
+    <div class="dctl">
+      <button id="dBc">一斉通話 開始</button>
+      <button id="dMute">ミュート</button>
+      <button id="dHold">保留音</button>
+      <button id="dLeave">退出</button>
+    </div>
+    <div class="dstat"><span id="dMic" class="pill">待機</span><span id="dBusy" class="pill">話中</span><span id="dTest" class="pill">試験信号</span><span id="dGuardPill" class="pill">防護発報</span></div>
+    <div class="dmenu"><button id="dDetail">詳細設定</button><button id="dSettings">設定</button></div>
+  </header>
+  <div class="dgrid">
+    <section class="panel"><h2>通話</h2><div id="dCalls"></div></section>
+    <section class="panel">
+      <h2>接続列車</h2>
+      <form id="dCallForm"><input id="dCallNo" inputmode="numeric" maxlength="6" placeholder="列車番号"><button>個別呼出</button></form>
+      <div id="dTrains"></div>
+    </section>
+    <section class="panel"><h2>防護発報</h2><div id="dGuards"></div></section>
+  </div>
+</main>
+
+<div id="modal" hidden><div class="sheet" role="dialog" aria-modal="true"><header><h2 id="mTitle"></h2><button id="mClose">閉じる</button></header><div id="mBody"></div></div></div>
+<div id="conn" hidden>再接続中…</div>
+<div id="toasts"></div>
+<script src="segdata.js"></script>
+<script src="platform.js"></script>
+<script src="adpcm.js"></script>
+<script src="audio.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
