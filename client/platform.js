@@ -2,6 +2,18 @@
 // 送話キー(全体ホットキー)・最前面固定は、同じPC上の起動プログラムに /__ctl で依頼する。
 // Android(アプリ内)では何もしない(window.desktop は未定義のまま)。
 (() => {
+  // PC版(Tauri・インストール版): 送話キーはRust側で検知、最前面・サイズはウィンドウAPIで
+  if (window.__TAURI__) {
+    const T = window.__TAURI__, w = T.window.getCurrentWindow();
+    window.desktop = {
+      platform: 'pc',
+      setPttKey: (code) => T.core.invoke('set_ptt_key', { code }),
+      setAlwaysOnTop: (on) => w.setAlwaysOnTop(!!on),
+      resize: (wd, h) => w.setSize(new T.dpi.LogicalSize(wd, h)),
+      onPtt: (cb) => { T.event.listen('ptt', (e) => cb(!!e.payload)); },
+    };
+    return;
+  }
   const local = location.protocol === 'http:' && (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
   if (!local) return;
   let ws = null, pttCb = null; const last = {};

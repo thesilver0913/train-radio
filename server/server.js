@@ -5,7 +5,12 @@ const ST = require('./stations');
 const { Recorder } = require('./recorder');
 
 const ROOT = __dirname, SOUND_DIR = path.join(ROOT, 'sounds');
-const CFG_PATH = process.env.RADIO_CONFIG || path.join(ROOT, 'config.json');
+// インストール版(TrainRadioServer.exe)は Program Files に書き込めないため、設定は ProgramData、録音はドキュメントに置く
+const PACKED = (() => { try { return require('node:sea').isSea(); } catch (e) { return false; } })();
+const tray = PACKED ? require('./tray') : null;
+const DATA = PACKED ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'TrainRadio') : ROOT;
+if (PACKED) fs.mkdirSync(DATA, { recursive: true });
+const CFG_PATH = process.env.RADIO_CONFIG || path.join(DATA, 'config.json');
 const DISPATCH_NO = '12306';
 const CHANNELS = [2, 80, 81];
 const VEHICLES = { shimoden: 'しもでん', chikatetsu: 'ちかてつ' };
@@ -17,7 +22,7 @@ const DEFAULTS = {
   jsonUrls: { 80: 'http://city.hakata-gov.com:50421/php/hakata_nanboku_i.json', 81: 'http://city.hakata-gov.com:50421/php/hakata_tozai_i.json' },
   pollIntervalSec: 7, staleSec: 600, ringTimeoutSec: 30, reconnectGraceSec: 300,
   guardRange: 1.5, borderMin: 7.0, borderMax: 8.5, testDurationMs: 3000,
-  recordEnabled: true, recordDir: 'recordings', recordKeepDays: 0, recordGapSec: 3,
+  recordEnabled: true, recordDir: PACKED ? path.join(tray.documentsDir(), 'TrainRadio', 'recordings') : 'recordings', recordKeepDays: 0, recordGapSec: 3,
 };
 function loadConfig() {
   let c = {}; try { c = JSON.parse(fs.readFileSync(CFG_PATH, 'utf8')); } catch (e) {}
@@ -47,7 +52,7 @@ const labelOf = (p) => (VEHICLES[p.vehicle] || '') + p.radioNo;
 const send = (p, o) => { if (online(p)) p.conn.send(JSON.stringify(o)); };
 const toast = (p, msg, level = 'info') => send(p, { t: 'toast', msg, level });
 const callOf = (p) => { for (const c of chans[p.ch].calls.values()) if (c.members.has(p.id)) return c; return null; };
-for (const ch of CHANNELS) recorders[ch] = new Recorder(ch, () => cfg, ROOT);
+for (const ch of CHANNELS) recorders[ch] = new Recorder(ch, () => cfg, DATA);
 const busy = (ch) => chans[ch].bc.size > 0 || [...chans[ch].calls.values()].some((c) => c.state === 'active');
 
 function newParty(role) {
@@ -378,11 +383,19 @@ if (cfg.tlsCert && cfg.tlsKey) server = https.createServer({ cert: fs.readFileSy
 else server = http.createServer(handler);
 attach(server, (conn) => { conn.onmessage = (d, b) => onMessage(conn, d, b); conn.onclose = () => onClose(conn); });
 function cleanupRecordings() {
-  const days = cfg.recordKeepDays; if (!(days > 0)) return; const dir = path.resolve(ROOT, cfg.recordDir);
+  const days = cfg.recordKeepDays; if (!(days > 0)) return; const dir = path.resolve(DATA, cfg.recordDir);
   try { for (const f of fs.readdirSync(dir)) { if (!/^\d+ch_\d{8}_\d{6}(_\d+)?\.wav$/.test(f)) continue; const fp = path.join(dir, f); if (Date.now() - fs.statSync(fp).mtimeMs > days * 86400000) fs.unlinkSync(fp); } } catch (e) {}
 }
 setInterval(cleanupRecordings, 3600 * 1000).unref(); cleanupRecordings();
 const shutdown = () => { for (const ch of CHANNELS) recorders[ch].stop(); process.exit(0); };
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
-server.listen(cfg.port, () => { console.log(`列車無線サーバー起動: ${cfg.tlsCert ? 'https' : 'http'}://0.0.0.0:${cfg.port}  (設定: ${CFG_PATH} / 録音: ${path.resolve(ROOT, cfg.recordDir)})`); poll(); });
+server.once('error', (e) => {
+  if (!tray) throw e;
+  tray.alert(e.code === 'EADDRINUSE' ? `ポート ${cfg.port} は使用中です。サーバーが既に起動している可能性があります。` : '起動できません: ' + e.message); process.exit(1);
+});
+server.listen(cfg.port, () => {
+  const scheme = cfg.tlsCert ? 'https' : 'http', recDir = path.resolve(DATA, cfg.recordDir);
+  console.log(`列車無線サーバー起動: ${scheme}://0.0.0.0:${cfg.port}  (設定: ${CFG_PATH} / 録音: ${recDir})`); poll();
+  if (tray) tray.start({ scheme, port: cfg.port, cfgPath: CFG_PATH, recDir, onQuit: shutdown });
+});
 module.exports = { server };

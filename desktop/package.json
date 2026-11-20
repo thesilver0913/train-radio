@@ -1,0 +1,6 @@
+{
+  "name": "train-radio-desktop",
+  "private": true,
+  "scripts": { "tauri": "tauri", "build": "tauri build --no-bundle", "icon": "tauri icon icon.svg" },
+  "devDependencies": { "@tauri-apps/cli": "^2.9.0" }
+}

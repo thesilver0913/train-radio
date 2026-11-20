@@ -1,0 +1,23 @@
+[package]
+name = "train-radio"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "TrainRadio"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

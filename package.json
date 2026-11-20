@@ -1,0 +1,6 @@
+{
+  "name": "train-radio",
+  "private": true,
+  "scripts": { "build:server": "node build/build-server.js" },
+  "devDependencies": { "rcedit": "^4.0.1" }
+}
