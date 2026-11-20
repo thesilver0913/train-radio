@@ -6,7 +6,7 @@ code, .log { font-family: 'BIZ UDGothic', Consolas, monospace; }
 h1 { margin: 0; font-size: 16px; font-weight: 600; }
 h2 { margin: 0 0 8px; font-size: 12px; font-weight: 400; color: var(--cds-text-secondary); letter-spacing: .32px; }
 .dim { color: var(--cds-text-secondary); margin: 0; }
-.bad { color: var(--cds-support-error); }
+.bad { color: var(--cds-text-error); }
 .on { color: var(--cds-support-warning); }
 .warn { color: var(--cds-support-warning); margin: 8px 0 0; font-size: 12px; }
 .grow { flex: 1; }

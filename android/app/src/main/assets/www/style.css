@@ -39,7 +39,7 @@ h1,h2,h3{margin:0;font-weight:600}
 .ptt:hover:not(:disabled){background:var(--cds-button-secondary-hover)}
 .ptt:focus-visible{outline:2px solid var(--cds-focus);outline-offset:-2px}
 .ptt.on{background:var(--amber);color:#1a1100}
-.ptt:disabled{background:var(--cds-button-disabled);color:var(--cds-text-on-color-disabled);cursor:default}
+.ptt:disabled{background:var(--cds-layer-02);color:var(--cds-text-secondary);cursor:default}
 
 /* 指令卓 */
 #disp{display:flex;flex-direction:column;height:100%}
@@ -59,7 +59,7 @@ cds-tag.alert{animation:blink 1s steps(1,end) infinite}
 .call .l1{font-weight:600}.call .l2{color:var(--cds-text-secondary);font-size:12px;margin:4px 0 8px}
 .call .acts,.guard .acts{display:flex;flex-wrap:wrap;gap:1px}
 .row{display:grid;grid-template-columns:64px 1fr auto auto;gap:8px;align-items:center;min-height:48px;padding:0 8px;border-bottom:1px solid var(--cds-border-subtle-01)}
-.row.off{opacity:.45}.row.talk{background:var(--cds-highlight)}
+.row.off,.row.off .lab{color:var(--cds-text-secondary)}.row.talk{background:var(--cds-highlight)}
 .row .no{font-family:var(--mono);font-weight:600}.row .lab{color:var(--cds-text-secondary);font-size:12px;font-family:var(--mono)}
 .flag{color:var(--cds-text-error);font-weight:600;font-size:12px}
 .guard{background:var(--cds-layer-01);border-left:4px solid var(--cds-support-error);padding:16px;margin-bottom:8px}
@@ -76,7 +76,7 @@ cds-tag.alert{animation:blink 1s steps(1,end) infinite}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 
 /* 共通 */
-#conn{position:fixed;left:50%;top:8px;transform:translateX(-50%);background:var(--cds-support-error);color:var(--cds-text-on-color);padding:4px 16px;z-index:30;font-size:12px}
+#conn{position:fixed;left:50%;top:8px;transform:translateX(-50%);background:var(--cds-button-danger-primary);color:var(--cds-text-on-color);padding:4px 16px;z-index:30;font-size:12px}
 #toasts{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:grid;gap:8px;z-index:9100;width:min(420px,92vw)}
 #toasts cds-inline-notification{max-width:none;margin:0}
 @media (max-width:900px){.dgrid{grid-template-columns:1fr;overflow:auto}}
