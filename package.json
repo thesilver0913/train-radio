@@ -1,6 +1,20 @@
 {
   "name": "train-radio",
   "private": true,
-  "scripts": { "build:server": "node build/build-server.js" },
-  "devDependencies": { "rcedit": "^4.0.1" }
+  "scripts": {
+    "build:server": "node build/build-server.js",
+    "build:ui": "node build/build-ui.js",
+    "build:desktop": "cd desktop && tauri build --no-bundle",
+    "build:admin": "cd admin && tauri build --no-bundle",
+    "icon": "tauri icon desktop/icon.svg -o desktop/src-tauri/icons"
+  },
+  "devDependencies": {
+    "@carbon/styles": "^1.120.0",
+    "@carbon/web-components": "^2.68.0",
+    "@ibm/plex-sans": "^2.0.0",
+    "@tauri-apps/cli": "^2.12.6",
+    "esbuild": "^0.28.2",
+    "rcedit": "^4.0.1",
+    "sass": "^1.108.2"
+  }
 }

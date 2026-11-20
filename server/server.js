@@ -1,15 +1,18 @@
 'use strict';
-const http = require('http'), https = require('https'), fs = require('fs'), path = require('path');
+const http = require('http'), https = require('https'), fs = require('fs'), os = require('os'), path = require('path');
 const { attach } = require('./ws');
 const ST = require('./stations');
 const { Recorder } = require('./recorder');
 
 const ROOT = __dirname, SOUND_DIR = path.join(ROOT, 'sounds');
-// インストール版(TrainRadioServer.exe)は Program Files に書き込めないため、設定は ProgramData、録音はドキュメントに置く
-const PACKED = (() => { try { return require('node:sea').isSea(); } catch (e) { return false; } })();
-const tray = PACKED ? require('./tray') : null;
-const DATA = PACKED ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'TrainRadio') : ROOT;
-if (PACKED) fs.mkdirSync(DATA, { recursive: true });
+// インストール版は管理アプリ(TrainRadioServer.exe)が環境変数で渡す:
+//   RADIO_DATA=設定の置き場所(ProgramData\TrainRadio)  RADIO_DOCS=ドキュメント(録音の既定先)  RADIO_ADMIN_TOKEN=管理APIの鍵
+const DATA = process.env.RADIO_DATA || ROOT, DOCS = process.env.RADIO_DOCS || '', ADMIN_TOKEN = process.env.RADIO_ADMIN_TOKEN || '';
+fs.mkdirSync(DATA, { recursive: true });
+if (ADMIN_TOKEN) for (const k of ['log', 'warn', 'error']) {   // 管理画面のログに時刻を付ける
+  const orig = console[k].bind(console);
+  console[k] = (...a) => orig(`[${new Date().toLocaleTimeString('ja-JP', { hour12: false })}]`, ...a);
+}
 const CFG_PATH = process.env.RADIO_CONFIG || path.join(DATA, 'config.json');
 const DISPATCH_NO = '12306', LISTEN_NO = '9999';   // 9999 = 傍受専用(全通話を聞くだけ・操作不可)
 const CHANNELS = [2, 80, 81];
@@ -22,7 +25,7 @@ const DEFAULTS = {
   jsonUrls: { 80: 'http://city.hakata-gov.com:50421/php/hakata_nanboku_i.json', 81: 'http://city.hakata-gov.com:50421/php/hakata_tozai_i.json' },
   pollIntervalSec: 7, staleSec: 600, ringTimeoutSec: 30, reconnectGraceSec: 300,
   guardRange: 1.5, borderMin: 7.0, borderMax: 8.5, testDurationMs: 3000,
-  recordEnabled: true, recordDir: PACKED ? path.join(tray.documentsDir(), 'TrainRadio', 'recordings') : 'recordings', recordKeepDays: 0, recordGapSec: 3,
+  recordEnabled: true, recordDir: DOCS ? path.join(DOCS, 'TrainRadio', 'recordings') : 'recordings', recordKeepDays: 0, recordGapSec: 3,
 };
 function loadConfig() {
   let c = {}; try { c = JSON.parse(fs.readFileSync(CFG_PATH, 'utf8')); } catch (e) {}
@@ -239,6 +242,7 @@ function flush() {
 // ---------------------------------------------------------------- 接続管理
 function destroyParty(p) {
   if (p.dead) return; p.dead = true; clearTimeout(p.offlineTimer);
+  console.log(`切断: ${p.role === 'dispatcher' ? '指令' : p.listen ? '傍受' : '列車'} ${p.trainNo} ${p.role === 'train' ? labelOf(p) + ' ' : ''}${p.ch}ch`);
   if (p.role === 'dispatcher') {
     if (p.hold) setHold(p, false);
     const ch = chans[p.ch]; ch.bc.delete(p.id); p.mode = null; parties.delete(p.id);
@@ -259,7 +263,7 @@ function onHello(conn, m) {
   if (trainNo === DISPATCH_NO) {
     if (String(m.password || '') !== cfg.dispatcherPassword) return fatal('指令パスワードが違います');
     const d = newParty('dispatcher'); d.ch = ch; d.trainNo = trainNo; d.conn = conn; conn.party = d;
-    send(d, { t: 'welcome', role: 'dispatcher', ch, id: d.id, bootId: BOOT_ID }); dirty(); return;
+    send(d, { t: 'welcome', role: 'dispatcher', ch, id: d.id, bootId: BOOT_ID }); dirty(); console.log(`接続: 指令 ${ch}ch`); return;
   }
   if (!VEHICLES[m.vehicle]) return fatal('車種を選択してください');
   let p = sessions.get(key);
@@ -272,6 +276,7 @@ function onHello(conn, m) {
   p.ch = ch; p.trainNo = trainNo; p.vehicle = m.vehicle; p.conn = conn; conn.party = p; p.listen = trainNo === LISTEN_NO;
   if (!p.listen) for (const c of chans[ch].calls.values()) if (c.origin === 'dispatcher' && c.kind === 'individual' && c.trainNo === trainNo) c.members.add(p.id); // 通話中の同一列番に参加
   send(p, { t: 'welcome', role: 'train', ch, id: p.id, radioNo: p.radioNo, label: labelOf(p), bootId: BOOT_ID });
+  console.log(`接続: ${p.listen ? '傍受' : '列車'} ${trainNo} ${labelOf(p)} ${ch}ch`);
   p.lastState = ''; dirty();
 }
 function onClose(conn) {
@@ -349,10 +354,11 @@ function dispMsg(d, m) {
     }
     case 'endCall': { const c = ch.calls.get(m.id); if (c) endCall(c, 'end'); break; }
     case 'forceGuard': { for (const g of activeGuards()) if (g.trainNo === String(m.trainNo) && guardsFor(d).some((x) => x.trainNo === g.trainNo)) g.guard = false; dirty(); break; }
-    case 'setSettings': applySettings(d, m.s || {}); break;
+    case 'setSettings': applySettings(m.s || {}); toast(d, '設定を保存しました', 'ok'); break;
   }
 }
-function applySettings(d, s) {
+// admin=true は管理アプリから(ポート・録音先なども変更可)。戻り値: 再起動が必要か
+function applySettings(s, admin = false) {
   const num = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) && v >= lo && v <= hi ? v : null; };
   let n;
   if (s.jsonUrls) for (const ch of [80, 81]) if (typeof s.jsonUrls[ch] === 'string' && /^https?:\/\//.test(s.jsonUrls[ch])) cfg.jsonUrls[ch] = s.jsonUrls[ch].trim();
@@ -365,14 +371,21 @@ function applySettings(d, s) {
   if (typeof s.recordEnabled === 'boolean') cfg.recordEnabled = s.recordEnabled;
   if ((n = num(s.recordKeepDays, 0, 3650)) != null) cfg.recordKeepDays = n;
   if (typeof s.newPassword === 'string' && s.newPassword.length >= 1) cfg.dispatcherPassword = s.newPassword;
-  saveConfig(); poll(); toast(d, '設定を保存しました', 'ok'); dirty();
+  let restart = false;
+  if (admin) {
+    if ((n = num(s.port, 1, 65535)) != null && Math.floor(n) === n && n !== cfg.port) { cfg.port = n; restart = true; }
+    if (typeof s.recordDir === 'string' && s.recordDir.trim()) cfg.recordDir = s.recordDir.trim();
+    if ((n = num(s.recordGapSec, 0, 60)) != null) cfg.recordGapSec = n;
+  }
+  saveConfig(); poll(); dirty(); return restart;
 }
 
 // ---------------------------------------------------------------- HTTP(効果音の配信のみ。画面はクライアントアプリが持つ)
 const BOOT_ID = String(Date.now());
 function handler(req, res) {
-  const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  const u = new URL(req.url, 'http://x'), p = decodeURIComponent(u.pathname);
   res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Cache-Control', 'no-cache');
+  if (p.startsWith('/admin/')) return admin(req, res, p, u);
   if (!p.startsWith('/sounds/')) { res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('列車無線サーバー稼働中'); }
   const file = path.normalize(path.join(SOUND_DIR, p.slice(8)));
   if (!file.startsWith(SOUND_DIR)) { res.writeHead(403); return res.end(); }
@@ -381,24 +394,67 @@ function handler(req, res) {
     res.writeHead(200, { 'Content-Type': path.extname(file) === '.wav' ? 'audio/wav' : 'application/octet-stream' }); res.end(buf);
   });
 }
+// ---------------------------------------------------------------- 管理API(管理アプリ専用: 同じPCから・鍵付きのみ)
+const REC_RE = /^\d+ch_\d{8}_\d{6}(_\d+)?\.wav$/, STARTED = Date.now();
+const recDir = () => path.resolve(DATA, cfg.recordDir);
+const lanAddrs = () => Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => a.address);
+function adminState() {
+  return {
+    port: server.address() ? server.address().port : cfg.port, cfgPort: cfg.port, scheme: cfg.tlsCert ? 'https' : 'http', startedAt: STARTED, addresses: lanAddrs(), cfgPath: CFG_PATH, recDir: recDir(), jsonStatus: publicSettings().jsonStatus,
+    channels: CHANNELS.map((ch) => ({ ch, busy: busy(ch), bc: chans[ch].bc.size > 0, calls: [...chans[ch].calls.values()].map((c) => ({ kind: c.kind, state: c.state, trainNo: c.trainNo, members: c.members.size })) })),
+    parties: [...parties.values()].map((p) => ({ id: p.id, ch: p.ch, role: p.role === 'dispatcher' ? 'dispatcher' : p.listen ? 'listen' : 'train', trainNo: p.trainNo,
+      label: p.role === 'train' ? labelOf(p) : '', section: p.role === 'train' ? sectionOf(p) : null, online: online(p), guard: !!p.guard, inCall: p.role === 'train' ? !!callOf(p) : !!p.mode })),
+  };
+}
+function admin(req, res, p, u) {
+  const local = /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(req.socket.remoteAddress || '');
+  if (!ADMIN_TOKEN || !local || u.searchParams.get('t') !== ADMIN_TOKEN) { res.writeHead(403); return res.end(); }
+  const json = (o) => { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(o)); };
+  if (p === '/admin/state') return json(adminState());
+  if (p === '/admin/config' && req.method === 'GET') return json(cfg);
+  if (p === '/admin/config' && req.method === 'POST') {
+    let body = ''; req.setEncoding('utf8');
+    req.on('data', (d) => { body += d; if (body.length > 65536) req.destroy(); });
+    return req.on('end', () => {
+      let s; try { s = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end(); }
+      json({ restart: applySettings(s, true) }); console.log('設定を変更しました(管理アプリ)');
+    });
+  }
+  if (p === '/admin/recordings') {
+    let files = [];
+    try { files = fs.readdirSync(recDir()).filter((f) => REC_RE.test(f)).map((f) => { const st = fs.statSync(path.join(recDir(), f)); return { name: f, size: st.size, mtime: st.mtimeMs }; }); } catch (e) {}
+    return json(files.sort((a, b) => b.mtime - a.mtime).slice(0, 500));
+  }
+  if (p.startsWith('/admin/rec/') && REC_RE.test(p.slice(11))) {
+    // ponytail: ファイル全体を返す(シーク用のRange未対応)。長時間の録音で重ければRange対応に
+    return fs.readFile(path.join(recDir(), p.slice(11)), (err, buf) => { if (err) { res.writeHead(404); return res.end(); } res.writeHead(200, { 'Content-Type': 'audio/wav' }); res.end(buf); });
+  }
+  res.writeHead(404); res.end();
+}
+
 let server;
 if (cfg.tlsCert && cfg.tlsKey) server = https.createServer({ cert: fs.readFileSync(cfg.tlsCert), key: fs.readFileSync(cfg.tlsKey) }, handler);
 else server = http.createServer(handler);
 attach(server, (conn) => { conn.onmessage = (d, b) => onMessage(conn, d, b); conn.onclose = () => onClose(conn); });
 function cleanupRecordings() {
-  const days = cfg.recordKeepDays; if (!(days > 0)) return; const dir = path.resolve(DATA, cfg.recordDir);
-  try { for (const f of fs.readdirSync(dir)) { if (!/^\d+ch_\d{8}_\d{6}(_\d+)?\.wav$/.test(f)) continue; const fp = path.join(dir, f); if (Date.now() - fs.statSync(fp).mtimeMs > days * 86400000) fs.unlinkSync(fp); } } catch (e) {}
+  const days = cfg.recordKeepDays; if (!(days > 0)) return; const dir = recDir();
+  try { for (const f of fs.readdirSync(dir)) { if (!REC_RE.test(f)) continue; const fp = path.join(dir, f); if (Date.now() - fs.statSync(fp).mtimeMs > days * 86400000) fs.unlinkSync(fp); } } catch (e) {}
 }
 setInterval(cleanupRecordings, 3600 * 1000).unref(); cleanupRecordings();
 const shutdown = () => { for (const ch of CHANNELS) recorders[ch].stop(); process.exit(0); };
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
 server.once('error', (e) => {
-  if (!tray) throw e;
-  tray.alert(e.code === 'EADDRINUSE' ? `ポート ${cfg.port} は使用中です。サーバーが既に起動している可能性があります。` : '起動できません: ' + e.message); process.exit(1);
+  console.error(e.code === 'EADDRINUSE' ? `ポート ${cfg.port} は使用中です。サーバーが既に起動しているか、他のアプリが使っています。` : '起動できません: ' + e.message);
+  process.exit(1);
 });
 server.listen(cfg.port, () => {
-  const scheme = cfg.tlsCert ? 'https' : 'http', recDir = path.resolve(DATA, cfg.recordDir);
-  console.log(`列車無線サーバー起動: ${scheme}://0.0.0.0:${cfg.port}  (設定: ${CFG_PATH} / 録音: ${recDir})`); poll();
-  if (tray) tray.start({ scheme, port: cfg.port, cfgPath: CFG_PATH, recDir, onQuit: shutdown });
+  console.log(`列車無線サーバー起動: ${cfg.tlsCert ? 'https' : 'http'}://0.0.0.0:${cfg.port}  (設定: ${CFG_PATH} / 録音: ${recDir()})`); poll();
+  console.log('@@ready ' + JSON.stringify({ port: cfg.port, scheme: cfg.tlsCert ? 'https' : 'http' }));   // 管理アプリが読み取る
 });
+// 管理アプリから起動された場合: 標準入力の quit で正常終了(録音を閉じる)。管理アプリが落ちて標準入力が切れても終了する
+if (ADMIN_TOKEN) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => { if (d.includes('quit')) shutdown(); });
+  process.stdin.on('end', shutdown);
+}
 module.exports = { server };

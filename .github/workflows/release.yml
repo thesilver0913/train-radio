@@ -18,23 +18,21 @@ jobs:
         with: { node-version: 26 }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: desktop/src-tauri }
 
       - name: Version
         shell: bash
         run: echo "VERSION=$([[ $GITHUB_REF == refs/tags/v* ]] && echo ${GITHUB_REF_NAME#v} || echo 0.0.0-dev)" >> $GITHUB_ENV
 
-      - name: Server exe (Node SEA)
+      - name: Server core exe (Node SEA)
         run: |
           npm ci
           npm run build:server
 
-      - name: Client exe (Tauri)
-        working-directory: desktop
+      - name: Client / server admin exe (Tauri)
         run: |
-          npm ci
-          npx tauri build --no-bundle
-          Copy-Item src-tauri\target\release\TrainRadio.exe ..\dist\
+          npm run build:desktop
+          npm run build:admin
+          Copy-Item target\release\TrainRadio.exe, target\release\TrainRadioServer.exe dist\
 
       - name: Installer (Inno Setup)
         run: |

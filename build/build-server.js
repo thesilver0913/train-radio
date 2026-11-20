@@ -1,9 +1,10 @@
-// サーバーを TrainRadioServer.exe にする: node build/build-server.js  → dist/TrainRadioServer.exe
+// サーバー本体を TrainRadioServerCore.exe にする: node build/build-server.js  → dist/TrainRadioServerCore.exe
+// (管理アプリ TrainRadioServer.exe が画面なしで起動する)
 // 1) Node SEA で node.exe に入口スクリプトを埋め込む  2) アイコン・バージョン情報を設定  3) コンソールを出さない(GUIサブシステム)にする
 const fs = require('fs'), path = require('path'), os = require('os');
 const { execFileSync } = require('child_process');
 const rcedit = require('rcedit');
-const ROOT = path.join(__dirname, '..'), OUT = path.join(ROOT, 'dist', 'TrainRadioServer.exe');
+const ROOT = path.join(__dirname, '..'), OUT = path.join(ROOT, 'dist', 'TrainRadioServerCore.exe');
 const version = require(path.join(ROOT, 'server', 'package.json')).version;
 
 (async () => {
@@ -15,7 +16,7 @@ const version = require(path.join(ROOT, 'server', 'package.json')).version;
   await rcedit(OUT, {
     icon: path.join(ROOT, 'desktop', 'src-tauri', 'icons', 'icon.ico'),
     'file-version': version, 'product-version': version,
-    'version-string': { ProductName: '列車無線サーバー', FileDescription: '列車無線サーバー', CompanyName: '', LegalCopyright: '', OriginalFilename: 'TrainRadioServer.exe', InternalName: 'TrainRadioServer' },
+    'version-string': { ProductName: '列車無線サーバー', FileDescription: '列車無線サーバー(本体)', CompanyName: '', LegalCopyright: '', OriginalFilename: 'TrainRadioServerCore.exe', InternalName: 'TrainRadioServerCore' },
   });
 
   // PEヘッダの Subsystem を 3(CUI) → 2(GUI) に書き換えると、起動時にコンソール窓が出ない

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>列車無線サーバー</title>
+<link rel="stylesheet" href="vendor/carbon.css">
+<link rel="stylesheet" href="admin.css">
+<script src="vendor/carbon.js"></script>
+</head>
+<body>
+<header class="bar">
+  <h1>列車無線サーバー</h1>
+  <cds-tag id="stTag" type="gray" size="md">停止中</cds-tag>
+  <span class="grow"></span>
+  <cds-button id="btnStart" kind="primary" size="md">起動</cds-button>
+  <cds-button id="btnStop" kind="secondary" size="md" hidden>停止</cds-button>
+  <cds-button id="btnRestart" kind="ghost" size="md" disabled>再起動</cds-button>
+</header>
+
+<cds-tabs id="tabs" value="status">
+  <cds-tab id="tab-status" value="status">状態</cds-tab>
+  <cds-tab id="tab-clients" value="clients">端末</cds-tab>
+  <cds-tab id="tab-config" value="config">設定</cds-tab>
+  <cds-tab id="tab-log" value="log">ログ</cds-tab>
+  <cds-tab id="tab-rec" value="rec">録音</cds-tab>
+</cds-tabs>
+
+<main>
+  <section id="p-status" role="tabpanel" aria-labelledby="tab-status">
+    <div id="errBox"></div>
+    <div class="tiles">
+      <cds-tile><h2>接続先</h2><div id="addrs" class="addrs"><p class="dim">停止中</p></div></cds-tile>
+      <cds-tile><h2>稼働時間</h2><p class="big" id="uptime">-</p></cds-tile>
+      <cds-tile><h2>接続中の端末</h2><p class="big" id="count">-</p><p class="dim" id="countSub"></p></cds-tile>
+    </div>
+    <div class="tiles">
+      <cds-tile><h2>チャンネル</h2><div id="chans" class="kv"></div></cds-tile>
+      <cds-tile class="wide"><h2>走行位置JSON</h2><div id="json" class="kv"></div></cds-tile>
+    </div>
+  </section>
+
+  <section id="p-clients" role="tabpanel" aria-labelledby="tab-clients" hidden>
+    <cds-table id="clients" size="md">
+      <cds-table-head><cds-table-header-row>
+        <cds-table-header-cell>ch</cds-table-header-cell><cds-table-header-cell>種別</cds-table-header-cell>
+        <cds-table-header-cell>列車番号</cds-table-header-cell><cds-table-header-cell>無線機番号</cds-table-header-cell>
+        <cds-table-header-cell>区間</cds-table-header-cell><cds-table-header-cell>状態</cds-table-header-cell>
+      </cds-table-header-row></cds-table-head>
+      <cds-table-body id="clientRows"></cds-table-body>
+    </cds-table>
+    <p class="dim empty" id="clientsEmpty">接続中の端末はありません</p>
+  </section>
+
+  <section id="p-config" role="tabpanel" aria-labelledby="tab-config" hidden>
+    <form id="cfgForm" class="form" autocomplete="off">
+      <h2>接続</h2>
+      <div class="row2">
+        <cds-text-input id="cPort" label="ポート" type="number" min="1" max="65535"></cds-text-input>
+        <cds-password-input id="cPw" label="指令パスワード" show-password-visibility-toggle></cds-password-input>
+      </div>
+      <h2>走行位置JSON</h2>
+      <cds-text-input id="cU80" label="80ch(南北線)のURL"></cds-text-input>
+      <cds-text-input id="cU81" label="81ch(東西線)のURL"></cds-text-input>
+      <div class="row2">
+        <cds-text-input id="cPoll" label="取得間隔(秒)" type="number" min="1" max="3600"></cds-text-input>
+        <cds-text-input id="cStale" label="位置不明にする時差(秒)" type="number" min="10" max="86400"></cds-text-input>
+      </div>
+      <h2>通話・防護発報</h2>
+      <div class="row2">
+        <cds-text-input id="cRing" label="呼出の自動切断(秒)" type="number" min="5" max="600"></cds-text-input>
+        <cds-text-input id="cRange" label="防護発報の範囲(±pos)" type="number" step="0.1" min="0" max="50"></cds-text-input>
+      </div>
+      <div class="row2">
+        <cds-text-input id="cBmin" label="2chへ越境するpos(下限)" type="number" step="0.1" min="0" max="100"></cds-text-input>
+        <cds-text-input id="cBmax" label="2chへ越境するpos(上限)" type="number" step="0.1" min="0" max="100"></cds-text-input>
+      </div>
+      <h2>録音</h2>
+      <cds-toggle id="cRec" label-text="通話を録音する" label-a="オン" label-b="オフ"></cds-toggle>
+      <div class="pathrow">
+        <cds-text-input id="cRecDir" label="保存先"></cds-text-input>
+        <cds-button id="cRecOpen" kind="tertiary" size="md" type="button">開く</cds-button>
+      </div>
+      <div class="row2">
+        <cds-text-input id="cGap" label="連結する間隔(秒)" type="number" min="0" max="60"></cds-text-input>
+        <cds-text-input id="cKeep" label="自動削除する日数(0=削除しない)" type="number" min="0" max="3650"></cds-text-input>
+      </div>
+      <div class="actions">
+        <cds-button id="cSave" kind="primary" type="button">保存</cds-button>
+        <cds-button id="cReload" kind="ghost" type="button">元に戻す</cds-button>
+      </div>
+      <div id="cfgMsg"></div>
+    </form>
+  </section>
+
+  <section id="p-log" role="tabpanel" aria-labelledby="tab-log" hidden>
+    <div class="actions"><cds-button id="logClear" kind="ghost" size="sm">表示をクリア</cds-button></div>
+    <pre id="log" class="log" tabindex="0"></pre>
+  </section>
+
+  <section id="p-rec" role="tabpanel" aria-labelledby="tab-rec" hidden>
+    <div class="actions">
+      <cds-button id="recRefresh" kind="ghost" size="sm">更新</cds-button>
+      <cds-button id="recOpen" kind="ghost" size="sm">フォルダを開く</cds-button>
+      <audio id="player" controls preload="none"></audio>
+    </div>
+    <cds-table id="recs" size="sm">
+      <cds-table-head><cds-table-header-row>
+        <cds-table-header-cell>日時</cds-table-header-cell><cds-table-header-cell>ch</cds-table-header-cell>
+        <cds-table-header-cell>長さ</cds-table-header-cell><cds-table-header-cell>ファイル</cds-table-header-cell><cds-table-header-cell></cds-table-header-cell>
+      </cds-table-header-row></cds-table-head>
+      <cds-table-body id="recRows"></cds-table-body>
+    </cds-table>
+    <p class="dim empty" id="recEmpty">録音はありません</p>
+  </section>
+</main>
+<script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+/* 管理画面: Carbon g100。余白は Carbon の spacing トークン(4/8/16/24/32px)に合わせる */
+html, body { margin: 0; height: 100%; background: var(--cds-background); color: var(--cds-text-primary); font-family: 'IBM Plex Sans', 'Yu Gothic UI', sans-serif; font-size: 14px; }
+body { display: flex; flex-direction: column; }
+[hidden] { display: none !important; }
+code, .log { font-family: 'BIZ UDGothic', Consolas, monospace; }
+h1 { margin: 0; font-size: 16px; font-weight: 600; }
+h2 { margin: 0 0 8px; font-size: 12px; font-weight: 400; color: var(--cds-text-secondary); letter-spacing: .32px; }
+.dim { color: var(--cds-text-secondary); margin: 0; }
+.bad { color: var(--cds-support-error); }
+.on { color: var(--cds-support-warning); }
+.warn { color: var(--cds-support-warning); margin: 8px 0 0; font-size: 12px; }
+.grow { flex: 1; }
+
+.bar { display: flex; align-items: center; gap: 16px; height: 48px; padding: 0 0 0 16px; background: var(--cds-layer-01); border-bottom: 1px solid var(--cds-border-subtle-01); }
+cds-tabs { padding: 0 16px; background: var(--cds-background); }
+main { flex: 1; min-height: 0; overflow: auto; padding: 24px 16px; }
+
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.tiles .wide { grid-column: span 2; }
+.big { margin: 0; font-size: 32px; line-height: 40px; font-weight: 300; }
+.addr { display: flex; align-items: center; gap: 8px; }
+.addr code { font-size: 16px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 24px; }
+#errBox:not(:empty) { margin-bottom: 16px; }
+
+cds-table { width: 100%; }
+.empty { padding: 16px 0; }
+
+.form { display: grid; gap: 16px; max-width: 720px; }
+.form h2 { margin: 16px 0 0; font-size: 14px; color: var(--cds-text-primary); font-weight: 600; }
+.form h2:first-child { margin-top: 0; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pathrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.actions { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.form .actions { margin: 8px 0 0; }
+
+.log { margin: 0; height: calc(100vh - 220px); overflow: auto; padding: 16px; background: var(--cds-layer-01); border: 1px solid var(--cds-border-subtle-01); font-size: 12px; line-height: 18px; white-space: pre-wrap; word-break: break-all; }
+#player { height: 32px; margin-left: auto; }
+
+@media (max-width: 800px) { .tiles { grid-template-columns: 1fr; } .tiles .wide { grid-column: auto; } .row2 { grid-template-columns: 1fr; } }
