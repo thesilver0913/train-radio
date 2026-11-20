@@ -20,6 +20,6 @@ function section(ch, trainNo, pos) {
   if (frac < 1e-6) { const n = BY_ID.get(lo); return n ? `[${n}]` : null; }
   const hi = lo + 1, a = BY_ID.get(lo), b = BY_ID.get(hi);
   if (!a || !b || hi > r[1]) return null;
-  return Number(trainNo) % 2 === 0 ? `[${b}]→[${a}] 間` : `[${a}]→[${b}] 間`;
+  return parseInt(trainNo, 10) % 2 === 0 ? `[${b}]→[${a}] 間` : `[${a}]→[${b}] 間`;
 }
 module.exports = { section, RANGE };

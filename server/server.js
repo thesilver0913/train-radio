@@ -11,7 +11,7 @@ const tray = PACKED ? require('./tray') : null;
 const DATA = PACKED ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'TrainRadio') : ROOT;
 if (PACKED) fs.mkdirSync(DATA, { recursive: true });
 const CFG_PATH = process.env.RADIO_CONFIG || path.join(DATA, 'config.json');
-const DISPATCH_NO = '12306';
+const DISPATCH_NO = '12306', LISTEN_NO = '9999';   // 9999 = 傍受専用(全通話を聞くだけ・操作不可)
 const CHANNELS = [2, 80, 81];
 const VEHICLES = { shimoden: 'しもでん', chikatetsu: 'ちかてつ' };
 
@@ -46,7 +46,8 @@ const recorders = {};
 const recSync = () => { for (const ch of CHANNELS) recorders[ch].sync(busy(ch)); };
 const online = (p) => !!(p.conn && !p.conn.closed);
 const inCh = (ch) => [...parties.values()].filter((p) => p.ch === ch);
-const trainsIn = (ch) => inCh(ch).filter((p) => p.role === 'train');
+const trainsIn = (ch) => inCh(ch).filter((p) => p.role === 'train' && !p.listen);
+const listenersIn = (ch) => inCh(ch).filter((p) => p.listen);
 const dispsIn = (ch) => inCh(ch).filter((p) => p.role === 'dispatcher');
 const labelOf = (p) => (VEHICLES[p.vehicle] || '') + p.radioNo;
 const send = (p, o) => { if (online(p)) p.conn.send(JSON.stringify(o)); };
@@ -174,6 +175,7 @@ function voiceTargets(p) {
       else c.members.forEach((id) => { const t = parties.get(id); if (t) res.add(t); });
     }
   }
+  listenersIn(p.ch).forEach((x) => res.add(x));                  // 傍受専用(9999)は個別通話を含め全部聞こえる
   res.delete(p); return [...res];
 }
 function activityAudience(chNo) { // 現在行われている通話を聞ける全員(試験音の宛先)
@@ -182,11 +184,12 @@ function activityAudience(chNo) { // 現在行われている通話を聞ける�
   dispsIn(chNo).forEach((x) => set.add(x));
   if (ch.bc.size > 0) trainsIn(chNo).forEach((x) => set.add(x));
   act.forEach((c) => c.members.forEach((id) => { const t = parties.get(id); if (t) set.add(t); }));
+  listenersIn(chNo).forEach((x) => set.add(x));
   return set;
 }
 function onAudio(conn, buf) {
   const p = conn.party;
-  if (!p || buf.length < 4 || buf.length > 1500 || buf[0] !== 1) return;
+  if (!p || p.listen || buf.length < 4 || buf.length > 1500 || buf[0] !== 1) return;
   recSync();
   const tone = (buf[2] & 1) === 1;
   let targets;
@@ -204,7 +207,7 @@ function trainState(p) {
   const c = callOf(p), handset = !c ? 'down' : c.state === 'ringing' ? 'ringing' : 'up';
   const recv = guardRecv(p);
   return { t: 'st', role: 'train', ch: p.ch, trainNo: p.trainNo, vehicle: p.vehicle, radioNo: p.radioNo, label: labelOf(p),
-    busy: busy(p.ch), handset, canPtt: p.ch === 2 || handset === 'up', guardSend: p.guard, guardRecv: recv.length > 0,
+    busy: busy(p.ch), handset, listen: !!p.listen, canPtt: !p.listen && (p.ch === 2 || handset === 'up'), guardSend: p.guard, guardRecv: recv.length > 0,
     guardFrom: recv.slice(0, 3).map(labelOf), testRemain: Math.max(0, chans[p.ch].testUntil - Date.now()) };
 }
 function publicSettings() {
@@ -214,7 +217,7 @@ function publicSettings() {
 function dispState(d) {
   const ch = chans[d.ch], now = Date.now();
   const trains = trainsIn(d.ch).map((t) => ({ id: t.id, trainNo: t.trainNo, label: labelOf(t), vehicle: t.vehicle, section: sectionOf(t), online: online(t), guard: t.guard, inCall: !!callOf(t) }))
-    .sort((a, b) => Number(a.trainNo) - Number(b.trainNo));
+    .sort((a, b) => a.trainNo.localeCompare(b.trainNo, 'ja', { numeric: true }));
   const calls = [...ch.calls.values()].map((c) => ({ id: c.id, kind: c.kind, state: c.state, origin: c.origin, trainNo: c.trainNo, startedAt: c.startedAt,
     ringLeft: c.state === 'ringing' ? Math.max(0, c.ringEnd - now) : 0,
     trains: [...c.members].map((id) => parties.get(id)).filter(Boolean).map((t) => ({ id: t.id, trainNo: t.trainNo, label: labelOf(t), section: sectionOf(t) })),
@@ -247,9 +250,9 @@ function destroyParty(p) {
 }
 function onHello(conn, m) {
   const fatal = (msg) => { conn.send(JSON.stringify({ t: 'err', msg, fatal: true })); };
-  const ch = Number(m.ch), trainNo = String(m.trainNo || '').trim(), key = String(m.key || '').slice(0, 64);
+  const ch = Number(m.ch), trainNo = String(m.trainNo || '').trim().toUpperCase(), key = String(m.key || '').slice(0, 64);
   if (!chans[ch]) return fatal('チャンネルが不正です');
-  if (!/^\d{1,6}$/.test(trainNo)) return fatal('列車番号は半角数字(6桁まで)で入力してください');
+  if (!/^[0-9A-Z]{1,6}$/.test(trainNo)) return fatal('列車番号は半角英数字(6文字まで)で入力してください');
   if (!key) return fatal('接続キーがありません');
   if (conn.party && conn.party.role === 'dispatcher') { destroyParty(conn.party); }
   else if (conn.party) { conn.party.conn = null; conn.party = null; }
@@ -266,8 +269,8 @@ function onHello(conn, m) {
     p = newParty('train'); p.key = key; p.radioNo = no; sessions.set(key, p);
   }
   if (p.ch && (p.ch !== ch || p.trainNo !== trainNo)) { leaveCalls(p); p.guard = false; p.testUntil = 0; } // チャンネル/列車番号の変更
-  p.ch = ch; p.trainNo = trainNo; p.vehicle = m.vehicle; p.conn = conn; conn.party = p;
-  for (const c of chans[ch].calls.values()) if (c.origin === 'dispatcher' && c.kind === 'individual' && c.trainNo === trainNo) c.members.add(p.id); // 通話中の同一列番に参加
+  p.ch = ch; p.trainNo = trainNo; p.vehicle = m.vehicle; p.conn = conn; conn.party = p; p.listen = trainNo === LISTEN_NO;
+  if (!p.listen) for (const c of chans[ch].calls.values()) if (c.origin === 'dispatcher' && c.kind === 'individual' && c.trainNo === trainNo) c.members.add(p.id); // 通話中の同一列番に参加
   send(p, { t: 'welcome', role: 'train', ch, id: p.id, radioNo: p.radioNo, label: labelOf(p), bootId: BOOT_ID });
   p.lastState = ''; dirty();
 }
@@ -285,7 +288,7 @@ function onMessage(conn, data, isBin) {
   const p = conn.party; if (!p) return;
   if (m.t === 'logout') return destroyParty(p);
   if (m.t === 'ping') return send(p, { t: 'pong', ts: m.ts });
-  if (p.role === 'train') trainMsg(p, m); else dispMsg(p, m);
+  if (p.role === 'train') { if (!p.listen) trainMsg(p, m); } else dispMsg(p, m);
 }
 function trainMsg(p, m) {
   const ch = chans[p.ch];
@@ -329,7 +332,7 @@ function dispMsg(d, m) {
     case 'callTrain': {
       if (d.ch === 2) return toast(d, '2chでは個別呼出は使用できません', 'warn');
       if (d.mode && d.mode.type === 'bc') return toast(d, '一斉通話中です。先に終話してください', 'warn');
-      const no = String(m.trainNo || '').trim(); if (!/^\d{1,6}$/.test(no)) return toast(d, '列車番号を入力してください', 'warn');
+      const no = String(m.trainNo || '').trim().toUpperCase(); if (!/^[0-9A-Z]{1,6}$/.test(no)) return toast(d, '列車番号を入力してください', 'warn');
       const ms = trainsIn(d.ch).filter((t) => t.trainNo === no); if (!ms.length) return toast(d, `列車 ${no} は接続していません`, 'warn');
       let c = [...ch.calls.values()].find((x) => x.kind === 'individual' && x.state === 'active' && x.trainNo === no);
       if (!c) { c = { id: nextCallId++, ch: d.ch, kind: 'individual', state: 'active', origin: 'dispatcher', trainNo: no, members: new Set(ms.map((t) => t.id)), startedAt: Date.now() }; ch.calls.set(c.id, c); }

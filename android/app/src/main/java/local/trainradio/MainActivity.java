@@ -6,12 +6,17 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.WindowManager;
 import android.webkit.PermissionRequest;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.WebViewAssetLoader;
 
-/** 列車側の画面(assets/www)をWebViewで表示するだけのアプリ。画面ファイルは端末内にあるため、サーバーがhttpでもマイクが使える。 */
+/** 列車側の画面(assets/www)をWebViewで表示するだけのアプリ。
+ *  画面は https://appassets.androidplatform.net/ として端末内から配信する(file:// だとオリジンが null になり、
+ *  AudioWorklet の blob:null を読み込めず通話できない)。https扱いなのでマイクも使え、http/wsのサーバーへは混在コンテンツ許可で接続する。 */
 public class MainActivity extends Activity {
     private WebView web;
 
@@ -35,8 +40,15 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> request.grant(request.getResources()));   // マイク
             }
         });
-        web.setWebViewClient(new WebViewClient());
-        web.loadUrl("file:///android_asset/www/index.html");
+        final WebViewAssetLoader assets = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                return assets.shouldInterceptRequest(request.getUrl());
+            }
+        });
+        web.loadUrl("https://appassets.androidplatform.net/assets/www/index.html");
     }
 
     @Override

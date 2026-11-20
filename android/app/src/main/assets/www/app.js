@@ -3,7 +3,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const D = window.desktop || null;                         // Electron(PC版)のときのみ存在
 const CH_NAME = { 2: '2ch(下電)', 80: '80ch(南北線)', 81: '81ch(東西線)' };
-const DEF = { ch: 80, trainNo: '', vehicle: 'shimoden', server: '', pttKey: 'F6', volDisp: 7, volTrain: 7, noise: 3, drive: 5, inDev: '', outDev: '', scale: 1, onTop: false };
+const DEF = { ch: 80, trainNo: '', vehicle: 'shimoden', server: '', pttKey: 'F6', volDisp: 7, volTrain: 7, drive: 5, inDev: '', outDev: '', scale: 1, onTop: false };
 const cfg = Object.assign({}, DEF, (() => { try { return JSON.parse(localStorage.getItem('trainradio.cfg') || '{}'); } catch (e) { return {}; } })());
 const saveCfg = () => localStorage.setItem('trainradio.cfg', JSON.stringify(cfg));
 let key = localStorage.getItem('trainradio.key');
@@ -93,8 +93,8 @@ function syncLoginRows() { const no = $('#fNo').value.trim(); $('#rowVeh').hidde
 $('#fNo').addEventListener('input', syncLoginRows);
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const no = $('#fNo').value.trim(), srv = $('#fSrv').value.trim();
-  if (!/^\d{1,6}$/.test(no)) return loginMsg('列車番号は半角数字で入力してください');
+  const no = $('#fNo').value.trim().toUpperCase(), srv = $('#fSrv').value.trim();
+  if (!/^[0-9A-Z]{1,6}$/.test(no)) return loginMsg('列車番号は半角英数字(6文字まで)で入力してください');
   if (no === '12306' && !D) return loginMsg('指令側はPC版でのみ使用できます');
   if (no === '12306' && !$('#fPw').value) return loginMsg('指令パスワードを入力してください');
   if (!srv) return loginMsg('サーバーのアドレスを入力してください');
@@ -106,7 +106,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
   if (D) { D.setPttKey(cfg.pttKey); D.setAlwaysOnTop(cfg.onTop); }
   wantConn = true; open();
 });
-function applyAudioCfg() { audio.setVolumes({ disp: cfg.volDisp / 10, train: cfg.volTrain / 10 }); audio.setFx({ noise: cfg.noise, drive: cfg.drive }); }
+function applyAudioCfg() { audio.setVolumes({ disp: cfg.volDisp / 10, train: cfg.volTrain / 10 }); audio.setFx({ drive: cfg.drive }); }
 
 // ------------------------------------------------------------ 列車側UI
 const seg = $('#seg').getContext('2d');
@@ -125,10 +125,10 @@ function renderTrain() {
   $('#hsOverlay').className = on && S.handset !== 'down' ? 'up' + (S.handset === 'ringing' ? ' ring' : '') : '';
   $('#radio').classList.toggle('off', !on);
   const pb = $('#ptt'), can = on && S.canPtt;
-  pb.disabled = !can; pb.textContent = can ? `送話 (${keyLabel(cfg.pttKey)})` : (on && S.ch !== 2 ? '受話器を上げて呼出' : '送話');
+  pb.disabled = !can; pb.textContent = can ? `送話 (${keyLabel(cfg.pttKey)})` : on && S.listen ? '傍受専用' : (on && S.ch !== 2 ? '受話器を上げて呼出' : '送話');
   if (!can && ptt) pttSet(false);
   $('#trainInfo').innerHTML = welcome && welcome.role === 'train'
-    ? `<b>${esc(welcome.label)}</b>${esc(CH_NAME[welcome.ch])} 列車 ${esc(cfg.trainNo)}${on ? '' : ' (未接続)'}${on && S.guardRecv ? '<br><span class="flag">防護発報を受信中</span>' : ''}` : '';
+    ? `<b>${esc(welcome.label)}</b>${esc(CH_NAME[welcome.ch])} 列車 ${esc(cfg.trainNo)}${on ? '' : ' (未接続)'}${on && S.listen ? '<br><span class="flag">傍受専用(操作はできません)</span>' : ''}${on && S.guardRecv ? '<br><span class="flag">防護発報を受信中</span>' : ''}` : '';
 }
 function fit() {
   const r = $('#radio'); let s;
@@ -153,12 +153,12 @@ addEventListener('blur', () => { if (!D) pttSet(false); });
 if (D) D.onPtt((on) => { if (!$('#train').hidden) pttSet(on); });
 
 $('#zHandset').addEventListener('click', () => {            // 受話器: 下→指令呼出/割込、発信中→取消、通話中は戻しても通話は継続
-  if (!connected() || !S || S.ch === 2) return;
+  if (!connected() || !S || S.ch === 2 || S.listen) return;
   if (S.handset === 'down') sendJson({ t: 'handset', up: true }); else if (S.handset === 'ringing') sendJson({ t: 'handset', up: false });
 });
-$('#zGuard').addEventListener('click', () => { if (connected() && S) sendJson({ t: 'guard', on: !S.guardSend }); });
+$('#zGuard').addEventListener('click', () => { if (connected() && S && !S.listen) sendJson({ t: 'guard', on: !S.guardSend }); });
 $('#zTest').addEventListener('click', () => {
-  if (!connected() || !S || S.ch === 2 || Date.now() < testUntil) return;
+  if (!connected() || !S || S.ch === 2 || S.listen || Date.now() < testUntil) return;
   sendJson({ t: 'test' }); audio.sendTone(3000);
 });
 function stepVol(d) { cfg.volDisp = Math.max(0, Math.min(10, cfg.volDisp + d)); saveCfg(); applyAudioCfg(); toast(`指令の音量 ${cfg.volDisp}`); }
@@ -242,7 +242,6 @@ function openSettings() {
     <label>指令の音量 <input type="range" id="sVd" min="0" max="10" value="${cfg.volDisp}"></label>
     <label>他列車の音量 <input type="range" id="sVt" min="0" max="10" value="${cfg.volTrain}"></label></section>
   <section><h3>無線らしさ</h3><div class="two">
-    <label>ノイズ <input type="range" id="sNo" min="0" max="10" value="${cfg.noise}"></label>
     <label>歪み <input type="range" id="sDr" min="0" max="10" value="${cfg.drive}"></label></div></section>
   ${D ? `<section><h3>音声デバイス</h3><label>入力(マイク)<select id="sIn"></select></label><label>出力(スピーカー)<select id="sOut"></select></label></section>` : ''}
   <section><h3>マイク確認</h3><button id="sMon">確認モード 開始</button><div class="meter"><i id="sMeter"></i></div>
@@ -252,13 +251,13 @@ function openSettings() {
     ${isTrain ? `<label>表示倍率<select id="sScale">${[0.75, 1, 1.25, 1.5, 2].map((v) => `<option value="${v}" ${v === cfg.scale ? 'selected' : ''}>${v}倍</option>`).join('')}</select></label>` : ''}</section>` : ''}
   <section><h3>${isTrain ? '列車情報' : '接続チャンネル'}</h3>
     <label>チャンネル<select id="sCh">${[2, 80, 81].map((c) => `<option value="${c}" ${c === cfg.ch ? 'selected' : ''}>${CH_NAME[c]}</option>`).join('')}</select></label>
-    ${isTrain ? `<label>列車番号<input id="sNo2" inputmode="numeric" maxlength="6" value="${esc(cfg.trainNo)}"></label>
+    ${isTrain ? `<label>列車番号<input id="sNo2" maxlength="6" autocapitalize="characters" spellcheck="false" value="${esc(cfg.trainNo)}"></label>
     <label>車種<select id="sVeh"><option value="shimoden" ${cfg.vehicle === 'shimoden' ? 'selected' : ''}>下電車</option><option value="chikatetsu" ${cfg.vehicle === 'chikatetsu' ? 'selected' : ''}>地下鉄車</option></select></label>` : ''}
     <button id="sApply">適用</button><p class="hint">${isTrain ? '無線機番号はログアウトするまで変わりません。' : ''}</p></section>
   <section><button id="sLogout" class="danger">ログアウト</button></section>`;
   openModal('設定', html, async (b) => {
     const num = (id, k, f) => b.querySelector(id).addEventListener('input', (e) => { cfg[k] = +e.target.value; saveCfg(); applyAudioCfg(); f && f(); });
-    num('#sVd', 'volDisp'); num('#sVt', 'volTrain'); num('#sNo', 'noise'); num('#sDr', 'drive');
+    num('#sVd', 'volDisp'); num('#sVt', 'volTrain'); num('#sDr', 'drive');
     let mon = false; const meter = setInterval(() => { b.querySelector('#sMeter').style.width = (audio.level() * 100) + '%'; }, 60);
     b.querySelector('#sMon').addEventListener('click', (e) => { mon = !mon; audio.setMonitor(mon); e.target.textContent = mon ? '確認モード 停止' : '確認モード 開始'; e.target.classList.toggle('active', mon); });
     modalCleanup = () => { clearInterval(meter); audio.setMonitor(false); };
@@ -281,7 +280,7 @@ function openSettings() {
     });
     b.querySelector('#sApply').addEventListener('click', () => {
       const ch = +b.querySelector('#sCh').value; let no = cfg.trainNo, veh = cfg.vehicle;
-      if (isTrain) { no = b.querySelector('#sNo2').value.trim(); veh = b.querySelector('#sVeh').value; if (!/^\d{1,6}$/.test(no) || no === '12306') return toast('列車番号は半角数字で入力してください(12306は指令専用です)', 'warn'); }
+      if (isTrain) { no = b.querySelector('#sNo2').value.trim().toUpperCase(); veh = b.querySelector('#sVeh').value; if (!/^[0-9A-Z]{1,6}$/.test(no) || no === '12306') return toast('列車番号は半角英数字(6文字まで)で入力してください(12306は指令専用です)', 'warn'); }
       Object.assign(cfg, { ch, trainNo: no, vehicle: veh }); saveCfg(); sendJson({ t: 'hello', key, ch, trainNo: no, vehicle: veh, password: pw }); closeModal();
     });
     b.querySelector('#sLogout').addEventListener('click', () => { sendJson({ t: 'logout' }); teardown(); closeModal(); showLogin(); });

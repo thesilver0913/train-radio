@@ -81,6 +81,15 @@ begin
     or RegQueryStringValue(HKCU, 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', v) and (v <> '') and (v <> '0.0.0.0');
 end;
 
+// 上書き更新時: 起動中のexeを終了させてからファイルを置き換える(トレイ常駐のサーバーは閉じる要求に応答しないため)
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var code: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im TrainRadioServer.exe', '', SW_HIDE, ewWaitUntilTerminated, code);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im TrainRadio.exe', '', SW_HIDE, ewWaitUntilTerminated, code);
+  Result := '';
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var code: Integer;
 begin

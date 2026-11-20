@@ -1,5 +1,5 @@
 // 音声エンジン: マイク取り込み(AudioWorklet) → 帯域制限 → 8kHz IMA-ADPCM(4bit) → 送信
-//               受信 → デコード → 送信元ごとにジッタ吸収して再生 → 無線風エフェクト → 出力
+//               受信 → デコード → 送信元ごとにジッタ吸収して再生 → 帯域制限・歪み → 出力
 // 送信フレーム: [1][codec=1(ADPCM)][flags bit0=試験トーン][payload 83バイト]  (20msごと。サーバーが録音のためにデコードする)
 // 受信フレーム: [1][codec][kind 0=指令 1=列車 2=試験トーン][srcId u16][payload]
 (function (root) {
@@ -13,7 +13,7 @@ registerProcessor('cap',Cap);`;
       this.send = opt.send; this.base = () => opt.base();
       this.srcs = new Map(); this.sfx = new Map(); this.heard = new Map();
       this.tx = false; this.toneUntil = 0;
-      this.vol = { disp: 0.7, train: 0.7 }; this.fx = { noise: 3, drive: 5 }; this.lastRx = 0; this.bootId = '';
+      this.vol = { disp: 0.7, train: 0.7 }; this.fx = { drive: 5 }; this.bootId = '';
     }
     async init() {
       if (this.ctx) { if (this.ctx.state !== 'running') await this.ctx.resume(); return; }
@@ -25,11 +25,6 @@ registerProcessor('cap',Cap);`;
       const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3000;
       this.shaper = c.createWaveShaper(); this.fxIn.connect(hp); hp.connect(lp); lp.connect(this.shaper); this.shaper.connect(this.master);
       this.gDisp.connect(this.fxIn); this.gTrain.connect(this.fxIn);
-      // ノイズ(受信中のみ薄く入れる)
-      const nb = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-      const ns = c.createBufferSource(); ns.buffer = nb; ns.loop = true; const nbp = c.createBiquadFilter(); nbp.type = 'bandpass'; nbp.frequency.value = 1800; nbp.Q.value = 0.7;
-      this.noiseGain = c.createGain(); this.noiseGain.gain.value = 0; ns.connect(nbp); nbp.connect(this.noiseGain); this.noiseGain.connect(this.master); ns.start();
-      setInterval(() => this._tick(), 100);
       this.setVolumes(this.vol); this.setFx(this.fx);
       // 送信系
       const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' })); await c.audioWorklet.addModule(url);
@@ -61,7 +56,6 @@ registerProcessor('cap',Cap);`;
     setTx(on) { this.tx = !!on; if (this.micGate) this.micGate.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.01); }
     setMonitor(on) { if (this.monGain) this.monGain.gain.value = on ? 1 : 0; }
     level() { if (!this.an) return 0; const b = new Float32Array(this.an.fftSize); this.an.getFloatTimeDomainData(b); let s = 0; for (const v of b) s += v * v; return Math.min(1, Math.sqrt(s / b.length) * 4); }
-    _tick() { const n = this.ctx.currentTime; this.noiseGain.gain.setTargetAtTime(n - this.lastRx < 0.25 ? this.fx.noise * 0.012 : 0, n, 0.03); }
 
     // ---- 送信
     _onFrame(f32) {
@@ -91,7 +85,7 @@ registerProcessor('cap',Cap);`;
       const ab = c.createBuffer(1, f.length, rate); ab.copyToChannel(f, 0);
       const n = c.createBufferSource(); n.buffer = ab; n.connect(s.kind === 0 ? this.gDisp : this.gTrain);
       let t = s.next; if (t < now + 0.01) t = now + JITTER;
-      n.start(t); s.next = t + ab.duration; this.lastRx = now;
+      n.start(t); s.next = t + ab.duration;
     }
 
     // ---- 効果音(サーバーのsounds/*.wav)

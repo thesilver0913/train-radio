@@ -16,7 +16,7 @@
       <select id="fCh"><option value="2">2ch(下電)</option><option value="80">80ch(南北線)</option><option value="81">81ch(東西線)</option></select>
     </label>
     <label>列車番号
-      <input id="fNo" inputmode="numeric" maxlength="6" placeholder="例 6110">
+      <input id="fNo" maxlength="6" placeholder="例 6110 / 501C" autocapitalize="characters" spellcheck="false">
     </label>
     <label id="rowVeh">車種
       <select id="fVeh"><option value="shimoden">下電車</option><option value="chikatetsu">地下鉄車</option></select>
@@ -72,7 +72,7 @@
     <section class="panel"><h2>通話</h2><div id="dCalls"></div></section>
     <section class="panel">
       <h2>接続列車</h2>
-      <form id="dCallForm"><input id="dCallNo" inputmode="numeric" maxlength="6" placeholder="列車番号"><button>個別呼出</button></form>
+      <form id="dCallForm"><input id="dCallNo" maxlength="6" autocapitalize="characters" spellcheck="false" placeholder="列車番号"><button>個別呼出</button></form>
       <div id="dTrains"></div>
     </section>
     <section class="panel"><h2>防護発報</h2><div id="dGuards"></div></section>

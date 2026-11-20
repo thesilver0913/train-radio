@@ -6,7 +6,7 @@ android {
         applicationId 'local.trainradio'
         minSdk 24
         targetSdk 34
-        versionCode (System.getenv('VERSION_CODE') ?: '1') as int
+        versionCode Integer.parseInt(System.getenv('VERSION_CODE') ?: '1')
         versionName System.getenv('VERSION_NAME') ?: '1.0'
     }
     // 署名鍵は GitHub Actions が環境変数で渡す(未指定なら release は未署名)
@@ -19,3 +19,4 @@ android {
     buildTypes { release { minifyEnabled false; if (ks) signingConfig signingConfigs.release } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
+dependencies { implementation 'androidx.webkit:webkit:1.8.0' }

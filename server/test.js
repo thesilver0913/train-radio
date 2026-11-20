@@ -64,6 +64,17 @@ let n = 0; const ok = (m) => console.log(`  ✓ ${++n}. ${m}`);
   const call = D.st.calls.find((c) => c.trainNo === '6110'); assert(call.trains[0].section === '[春日道]→[新開地] 間' && call.trains[0].label === B.welcome.label); ok('着信に列番・区間・局番が付く');
   D.tx({ t: 'answer', id: call.id }); await until(() => B.st.handset === 'up' && B.st.canPtt && B.st.busy && A.st.busy, 1000, 'active');
   ok('応答で個別通話開始・話中ランプ点灯(他列車も)'); 
+  // --- 英数字の列車番号 / 9999(傍受専用)
+  const AN = await train('AN', 80, '501c'); assert(AN.welcome, '501c'); await until(() => D.st.trains.some((t) => t.trainNo === '501C'), 1000, '501C');
+  ok('列車番号は英数字可(501c → 501C に正規化)');
+  const L = await train('L', 80, '9999'); await until(() => L.st && L.st.listen === true && L.st.canPtt === false, 1000, 'listen st');
+  await sleep(50); assert(!D.st.trains.some((t) => t.trainNo === '9999'), '指令の列車一覧に出ない');
+  [D, B, L, A].forEach((c) => c.clear());
+  D.frame(); await sleep(80); B.frame(); await sleep(80); assert.strictEqual(L.audio.length, 2, '個別通話の指令・列車の声が両方届く ' + L.audio.length); assert.strictEqual(A.audio.length, 0);
+  L.tx({ t: 'handset', up: true }); L.tx({ t: 'guard', on: true }); L.tx({ t: 'test' }); [D, B].forEach((c) => c.clear()); L.frame(); await sleep(100);
+  assert(L.st.handset === 'down' && !L.st.guardSend && D.audio.length === 0 && B.audio.length === 0 && !D.st.calls.some((c) => c.trainNo === '9999'), '操作・送話は無効');
+  ok('9999=傍受専用: 個別通話も聞こえる・一覧に出ない・受話器/防護/試験/送話は無効');
+  AN.tx({ t: 'logout' }); L.tx({ t: 'logout' }); await sleep(50);
   [D, D2, B, A, E].forEach((c) => c.clear());
   D.frame(); await sleep(100); assert(B.audio.length === 1 && D2.audio.length === 1 && A.audio.length === 0 && E.audio.length === 0); ok('指令の声: 通話列車と他指令員に届き、他列車には届かない');
   [D, D2, B, A, E].forEach((c) => c.clear());
