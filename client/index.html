@@ -3,31 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#15171a">
+<meta name="theme-color" content="#161616">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>列車無線</title>
+<link rel="stylesheet" href="vendor/carbon.css">
 <link rel="stylesheet" href="style.css">
+<script src="vendor/carbon.js"></script>
 </head>
 <body>
 <main id="login" class="view">
   <form id="loginForm" autocomplete="off">
     <h1>列車無線</h1>
-    <label>チャンネル
-      <select id="fCh"><option value="2">2ch(下電)</option><option value="80">80ch(南北線)</option><option value="81">81ch(東西線)</option></select>
-    </label>
-    <label>列車番号
-      <input id="fNo" maxlength="6" placeholder="例 6110 / 501C" autocapitalize="characters" spellcheck="false">
-    </label>
-    <label id="rowVeh">車種
-      <select id="fVeh"><option value="shimoden">下電車</option><option value="chikatetsu">地下鉄車</option></select>
-    </label>
-    <label id="rowPw" hidden>指令パスワード
-      <input id="fPw" type="password">
-    </label>
-    <label id="rowSrv">サーバー
-      <input id="fSrv" placeholder="例 http://192.168.0.10:8080" autocapitalize="off" spellcheck="false">
-    </label>
-    <button id="fGo" class="primary">接続</button>
+    <cds-select id="fCh" label-text="チャンネル">
+      <cds-select-item value="2">2ch(下電)</cds-select-item>
+      <cds-select-item value="80">80ch(南北線)</cds-select-item>
+      <cds-select-item value="81">81ch(東西線)</cds-select-item>
+    </cds-select>
+    <cds-text-input id="fNo" label="列車番号" maxlength="6" placeholder="例 6110 / 501C" autocomplete="off"></cds-text-input>
+    <cds-select id="fVeh" label-text="車種">
+      <cds-select-item value="shimoden">下電車</cds-select-item>
+      <cds-select-item value="chikatetsu">地下鉄車</cds-select-item>
+    </cds-select>
+    <cds-password-input id="fPw" label="指令パスワード" hidden></cds-password-input>
+    <cds-text-input id="fSrv" label="サーバー" placeholder="例 http://192.168.0.10:8080" autocomplete="off"></cds-text-input>
+    <cds-button id="fGo" kind="primary" size="lg">接続</cds-button>
     <p id="loginMsg" role="status"></p>
   </form>
 </main>
@@ -52,35 +51,49 @@
   <div class="tbar">
     <div id="trainInfo"></div>
     <button id="ptt" class="ptt">送話</button>
-    <button id="btnSettings">設定</button>
+    <cds-button id="btnSettings" kind="ghost" size="lg">設定</cds-button>
   </div>
 </main>
 
 <main id="disp" class="view" hidden>
   <header class="dbar">
-    <div class="dtitle"><b id="dCh"></b><span id="dMeta"></span></div>
+    <div class="dtitle"><h1 id="dCh"></h1><span id="dMeta"></span></div>
     <div class="dctl">
-      <button id="dBc">一斉通話 開始</button>
-      <button id="dMute">ミュート</button>
-      <button id="dHold">保留音</button>
-      <button id="dLeave">退出</button>
+      <cds-button id="dBc" kind="primary" size="md">一斉通話 開始</cds-button>
+      <cds-button id="dMute" kind="secondary" size="md">ミュート</cds-button>
+      <cds-button id="dHold" kind="secondary" size="md">保留音</cds-button>
+      <cds-button id="dLeave" kind="secondary" size="md">退出</cds-button>
     </div>
-    <div class="dstat"><span id="dMic" class="pill">待機</span><span id="dBusy" class="pill">話中</span><span id="dTest" class="pill">試験信号</span><span id="dGuardPill" class="pill">防護発報</span></div>
-    <div class="dmenu"><button id="dDetail">詳細設定</button><button id="dSettings">設定</button></div>
+    <div class="dstat">
+      <cds-tag id="dMic" type="gray" size="md">待機</cds-tag>
+      <cds-tag id="dBusy" type="gray" size="md">話中</cds-tag>
+      <cds-tag id="dTest" type="gray" size="md">試験信号</cds-tag>
+      <cds-tag id="dGuardPill" type="gray" size="md">防護発報</cds-tag>
+    </div>
+    <div class="dmenu">
+      <cds-button id="dDetail" kind="ghost" size="md">詳細設定</cds-button>
+      <cds-button id="dSettings" kind="ghost" size="md">設定</cds-button>
+    </div>
   </header>
   <div class="dgrid">
     <section class="panel"><h2>通話</h2><div id="dCalls"></div></section>
     <section class="panel">
       <h2>接続列車</h2>
-      <form id="dCallForm"><input id="dCallNo" maxlength="6" autocapitalize="characters" spellcheck="false" placeholder="列車番号"><button>個別呼出</button></form>
+      <div id="dCallForm">
+        <cds-text-input id="dCallNo" label="列車番号" hide-label maxlength="6" placeholder="列車番号" size="md"></cds-text-input>
+        <cds-button id="dCallGo" kind="tertiary" size="md">個別呼出</cds-button>
+      </div>
       <div id="dTrains"></div>
     </section>
     <section class="panel"><h2>防護発報</h2><div id="dGuards"></div></section>
   </div>
 </main>
 
-<div id="modal" hidden><div class="sheet" role="dialog" aria-modal="true"><header><h2 id="mTitle"></h2><button id="mClose">閉じる</button></header><div id="mBody"></div></div></div>
-<div id="conn" hidden>再接続中…</div>
+<cds-modal id="modal" size="sm">
+  <cds-modal-header><cds-modal-close-button></cds-modal-close-button><cds-modal-heading id="mTitle"></cds-modal-heading></cds-modal-header>
+  <cds-modal-body id="mBody"></cds-modal-body>
+</cds-modal>
+<div id="conn" hidden>再接続中</div>
 <div id="toasts"></div>
 <script src="segdata.js"></script>
 <script src="platform.js"></script>

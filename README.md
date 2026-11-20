@@ -12,7 +12,7 @@
 ## インストール(Windows / Android)
 [Releases](https://github.com/thesilver0913/train-radio/releases) から入手します。Node.js のインストールは不要です。
 - **Windows**: `TrainRadio-Setup-x.y.z.exe` を実行し、「サーバー」「PC版クライアント」を選んでインストール(管理者権限・Program Files)。
-  - サーバー(`TrainRadioServer.exe`)はウィンドウを出さずタスクトレイに常駐します。右クリックで状態(接続先アドレス)・設定ファイル・録音フォルダ・終了。サインイン時の自動起動とファイアウォール許可はインストール時に選べます。
+  - サーバー(`TrainRadioServer.exe`)は管理画面つきのアプリです。状態(接続先アドレス・位置JSON)・接続中の端末・設定・ログ・録音の再生ができます。ウィンドウを閉じてもタスクトレイに残り、サーバーは動き続けます(終了はトレイの右クリックから)。サインイン時の自動起動(トレイのみで起動)とファイアウォール許可はインストール時に選べます。
   - 設定は `C:\ProgramData\TrainRadio\config.json`、録音は `ドキュメント\TrainRadio\recordings` に保存します。
   - PC版(`TrainRadio.exe`)は WebView2 で動く独立したアプリです(Windows 11 は標準搭載)。送話キーは他のアプリが前面でも効きます。
 - **Android**: `TrainRadio-x.y.z.apk` を端末に入れてインストール(提供元不明アプリの許可が必要)。新しい版は上書きインストールできます。
@@ -25,9 +25,11 @@ git push origin v1.0.0
 ```
 | 成果物 | 中身 | 手元でのビルド |
 |---|---|---|
-| `TrainRadioServer.exe` | Node.js 単一実行ファイル(SEA)。同じフォルダの `server/*.js` を読み込む | `npm ci && npm run build:server`(Node.js 25.5以上) |
-| `TrainRadio.exe` | Tauri 2(Rust)。画面は `client/` を埋め込み | `cd desktop && npm ci && npx tauri build --no-bundle`(Rust が必要) |
+| `TrainRadioServerCore.exe` | サーバー本体。Node.js 単一実行ファイル(SEA)で、同じフォルダの `server/*.js` を読み込む | `npm ci && npm run build:server`(Node.js 25.5以上) |
+| `TrainRadioServer.exe` | サーバー管理アプリ。Tauri 2(Rust)。画面は `admin/ui/`。本体を画面なしで起動し、管理API(`/admin/*`、同じPCから・起動ごとの鍵付きのみ)で状態を取得 | `npm run build:admin`(Rust が必要) |
+| `TrainRadio.exe` | PC版クライアント。Tauri 2(Rust)。画面は `client/` を埋め込み | `npm run build:desktop`(Rust が必要) |
 | インストーラー | Inno Setup 6(`installer/TrainRadio.iss`) | 上の2つを `dist/` に置いて `iscc installer\TrainRadio.iss` |
+| 画面部品 | Carbon Design System(Web Components・g100テーマ)と IBM Plex Sans を `client/vendor/`・`admin/ui/vendor/` に同梱(オフラインで動作) | `npm run build:ui`(出力はコミット済み。更新時のみ) |
 | APK | 署名鍵は GitHub Secrets(`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD`、別名 `trainradio`) | Android Studio(下記) |
 
 以下は Node.js で直接動かす場合の説明です。
@@ -74,7 +76,7 @@ APKは、Android Studio(JDK・Android SDK同梱)で**一度だけビルド**す�
 指令パスワード(平文)、位置JSONのURL、取得間隔(7秒)、位置不明にする時差(600秒)、呼出の自動切断(30秒)、防護発報の範囲(±1.5)、2ch越境のpos範囲(7.0〜8.5)、録音の設定。
 
 ## 差し替え可能な素材
-- 音声(`server/sounds/*.wav`): `chime80` `chime81` `hold` `tone800` `test_return` `ringback` `bell` `guard`(防護警報「ピピピピピ」)。現在は仮の合成音です。
+- 音声(`server/sounds/*.wav`): `chime80` `chime81` `hold` `tone800` `test_return` `ringback` `bell` `guard`(防護警報「ピピピピピ」)。現在は仮の合成音です(差し替えた音声を上書きしないよう、合成スクリプトは削除しました)。
 - テクスチャ(`client/img/`): `base` `power` `busy` `guard` `test` `seg`。差し替え後、Android版は `node android/sync-assets.js` を実行して再ビルド。
 
 ## 実装上の取り決め

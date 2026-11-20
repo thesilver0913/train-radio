@@ -48,7 +48,7 @@ Name: "firewall"; Description: "ファイアウォールでサーバーへの接
 Source: "..\dist\TrainRadio.exe"; DestDir: "{app}"; Components: client; Flags: ignoreversion
 Source: "..\dist\TrainRadioServer.exe"; DestDir: "{app}"; Components: server; Flags: ignoreversion
 Source: "..\dist\TrainRadioServerCore.exe"; DestDir: "{app}"; Components: server; Flags: ignoreversion
-Source: "..\server\*.js"; Excludes: "test.js,gen-sounds.js"; DestDir: "{app}\server"; Components: server; Flags: ignoreversion
+Source: "..\server\*.js"; Excludes: "test.js"; DestDir: "{app}\server"; Components: server; Flags: ignoreversion
 Source: "..\server\package.json"; DestDir: "{app}\server"; Components: server; Flags: ignoreversion
 Source: "..\server\sounds\*.wav"; DestDir: "{app}\server\sounds"; Components: server; Flags: ignoreversion
 

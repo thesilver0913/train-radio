@@ -11,7 +11,7 @@ const { attach } = require('./ws');
 const WWW = path.join(__dirname, '..', 'client');
 const PROFILE = path.join(__dirname, 'profile');                 // ブラウザの保存領域(設定・マイク許可がここに残る)
 const BASE_PORT = Number(process.env.RADIO_CLIENT_PORT) || 18777;
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.json': 'application/json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2' };
 const WIN = process.platform === 'win32';
 let browser = null, watcher = null, ctlConns = new Set();
 

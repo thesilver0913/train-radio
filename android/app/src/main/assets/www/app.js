@@ -1,7 +1,7 @@
 'use strict';
 (() => {
 const $ = (s, r = document) => r.querySelector(s);
-const D = window.desktop || null;                         // Electron(PC版)のときのみ存在
+const D = window.desktop || null;                         // PC版(Tauri / pc-client)のときのみ存在
 const CH_NAME = { 2: '2ch(下電)', 80: '80ch(南北線)', 81: '81ch(東西線)' };
 const DEF = { ch: 80, trainNo: '', vehicle: 'shimoden', server: '', pttKey: 'F6', volDisp: 7, volTrain: 7, drive: 5, inDev: '', outDev: '', scale: 1, onTop: false };
 const cfg = Object.assign({}, DEF, (() => { try { return JSON.parse(localStorage.getItem('trainradio.cfg') || '{}'); } catch (e) { return {}; } })());
@@ -23,7 +23,10 @@ function httpBase() {
 const wsUrl = () => httpBase().replace(/^http/, 'ws');
 const sendJson = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
 function toast(msg, level = 'info') {
-  const el = document.createElement('div'); el.className = 'toast ' + level; el.textContent = msg; $('#toasts').appendChild(el); setTimeout(() => el.remove(), 4500);
+  const el = document.createElement('cds-inline-notification');
+  el.setAttribute('kind', { warn: 'warning', ok: 'success', error: 'error' }[level] || 'info'); el.setAttribute('title', msg);
+  el.setAttribute('low-contrast', ''); el.setAttribute('hide-close-button', '');
+  $('#toasts').appendChild(el); setTimeout(() => el.remove(), 4500);
 }
 function show(id) {
   for (const v of ['login', 'train', 'disp']) $('#' + v).hidden = v !== id; $('#conn').hidden = true;
@@ -89,10 +92,13 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) requ
 // ------------------------------------------------------------ ログイン
 function loginMsg(t) { $('#loginMsg').textContent = t || ''; }
 function showLogin(msg) { show('login'); document.title = '列車無線'; $('#loginMsg').textContent = msg || ''; $('#fGo').disabled = false; }
-function syncLoginRows() { const no = $('#fNo').value.trim(); $('#rowVeh').hidden = no === '12306'; $('#rowPw').hidden = no !== '12306'; }
+function syncLoginRows() { const no = $('#fNo').value.trim(); $('#fVeh').hidden = no === '12306'; $('#fPw').hidden = no !== '12306'; }
 $('#fNo').addEventListener('input', syncLoginRows);
-$('#loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
+$('#loginForm').addEventListener('submit', (e) => e.preventDefault());
+$('#loginForm').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); login(); } });
+$('#fGo').addEventListener('click', () => login());
+async function login() {
+  if ($('#fGo').disabled) return;
   const no = $('#fNo').value.trim().toUpperCase(), srv = $('#fSrv').value.trim();
   if (!/^[0-9A-Z]{1,6}$/.test(no)) return loginMsg('列車番号は半角英数字(6文字まで)で入力してください');
   if (no === '12306' && !D) return loginMsg('指令側はPC版でのみ使用できます');
@@ -105,7 +111,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
   audio.setOutput(cfg.outDev); applyAudioCfg();
   if (D) { D.setPttKey(cfg.pttKey); D.setAlwaysOnTop(cfg.onTop); }
   wantConn = true; open();
-});
+}
 function applyAudioCfg() { audio.setVolumes({ disp: cfg.volDisp / 10, train: cfg.volTrain / 10 }); audio.setFx({ drive: cfg.drive }); }
 
 // ------------------------------------------------------------ 列車側UI
@@ -146,8 +152,8 @@ const pb = $('#ptt');
 pb.addEventListener('pointerdown', (e) => { e.preventDefault(); try { pb.setPointerCapture(e.pointerId); } catch (x) {} pttSet(true); });
 ['pointerup', 'pointercancel'].forEach((ev) => pb.addEventListener(ev, () => pttSet(false)));
 pb.addEventListener('contextmenu', (e) => e.preventDefault());
-const typing = (t) => t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName);
-addEventListener('keydown', (e) => { if (e.code === cfg.pttKey && !$('#train').hidden && !typing(e.target) && !captureKey) { e.preventDefault(); if (!e.repeat) pttSet(true); } });
+const typing = (e) => { const t = e.composedPath()[0]; return !!t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName); };
+addEventListener('keydown', (e) => { if (e.code === cfg.pttKey && !$('#train').hidden && !typing(e) && !captureKey) { e.preventDefault(); if (!e.repeat) pttSet(true); } });
 addEventListener('keyup', (e) => { if (e.code === cfg.pttKey) pttSet(false); });
 addEventListener('blur', () => { if (!D) pttSet(false); });
 if (D) D.onPtt((on) => { if (!$('#train').hidden) pttSet(on); });
@@ -171,17 +177,18 @@ const secTxt = (s) => (s ? esc(s) : '');
 function renderDispPills() {
   if (!DS) return; const y = DS.you;
   const talking = !!y.mode && !y.muted && !y.hold;
-  $('#dMic').textContent = y.hold ? '保留中' : talking ? '送話中' : y.mode ? 'ミュート中' : '待機'; $('#dMic').className = 'pill' + (talking ? ' on' : '');
-  $('#dBusy').className = 'pill' + (DS.busy ? ' on' : ''); $('#dTest').className = 'pill' + (Date.now() < testUntil ? ' on' : '');
-  $('#dGuardPill').className = 'pill' + (DS.guards.length ? ' alert' : '');
+  const tag = (id, type) => $(id).setAttribute('type', type);
+  $('#dMic').textContent = y.hold ? '保留中' : talking ? '送話中' : y.mode ? 'ミュート中' : '待機'; tag('#dMic', talking ? 'green' : y.hold ? 'purple' : 'gray');
+  tag('#dBusy', DS.busy ? 'blue' : 'gray'); tag('#dTest', Date.now() < testUntil ? 'blue' : 'gray');
+  tag('#dGuardPill', DS.guards.length ? 'red' : 'gray'); $('#dGuardPill').classList.toggle('alert', DS.guards.length > 0);
 }
 function renderDisp() {
   if (!DS) return; const y = DS.you, inBc = y.mode && y.mode.type === 'bc', inCall = y.mode && y.mode.type === 'call';
   $('#dCh').textContent = CH_NAME[DS.ch];
   $('#dMeta').textContent = `指令員 ${DS.dispatchers.length}名 / 接続列車 ${DS.trains.filter((t) => t.online).length}両`;
-  const bc = $('#dBc'); bc.textContent = inBc ? '一斉通話 終話' : '一斉通話 開始'; bc.className = inBc ? 'active' : ''; bc.disabled = !!inCall;
-  $('#dMute').disabled = !y.mode; $('#dMute').className = y.mode && y.muted && !y.hold ? 'active' : ''; $('#dMute').textContent = y.muted && !y.hold ? 'ミュート解除' : 'ミュート';
-  $('#dHold').disabled = !y.mode; $('#dHold').className = y.hold ? 'active' : ''; $('#dHold').textContent = y.hold ? '保留 解除' : '保留音';
+  const bc = $('#dBc'); bc.textContent = inBc ? '一斉通話 終話' : '一斉通話 開始'; bc.kind = inBc ? 'danger' : 'primary'; bc.disabled = !!inCall;
+  $('#dMute').disabled = !y.mode; $('#dMute').kind = y.mode && y.muted && !y.hold ? 'primary' : 'secondary'; $('#dMute').textContent = y.muted && !y.hold ? 'ミュート解除' : 'ミュート';
+  $('#dHold').disabled = !y.mode; $('#dHold').kind = y.hold ? 'primary' : 'secondary'; $('#dHold').textContent = y.hold ? '保留 解除' : '保留音';
   $('#dLeave').disabled = !inCall;
   audio.setTx(!!y.mode && !y.muted && !y.hold);
   renderDispPills();
@@ -190,18 +197,19 @@ function renderDisp() {
     const trains = c.trains.map((t) => `<span class="mono">${esc(t.trainNo)}</span> ${secTxt(t.section)} <span class="mono">${esc(t.label)}</span>`).join(' / ');
     const mine = inCall && y.mode.id === c.id;
     let l2, acts;
-    if (c.state === 'ringing') { l2 = `呼出中 残り <span class="rl" data-end="${dsAt + c.ringLeft}"></span>秒`; acts = `<button class="primary" data-act="answer" data-id="${c.id}">応答</button><button data-act="endCall" data-id="${c.id}">却下</button>`; }
-    else if (c.kind === 'reply') { l2 = '一斉通話への応答中'; acts = `<button data-act="endCall" data-id="${c.id}">終話</button>`; }
-    else { l2 = `個別通話 指令員${c.dispatchers.length}名` + (mine ? (y.muted ? '(ミュート中)' : '(送話中)') : ''); acts = mine ? `<button class="danger" data-act="endCall" data-id="${c.id}">終話</button>` : `<button class="primary" data-act="answer" data-id="${c.id}">応答(話す)</button><button data-act="join" data-id="${c.id}">参加(聞く)</button><button data-act="endCall" data-id="${c.id}">終話</button>`; }
+    const btn = (kind, act, text) => `<cds-button size="sm" kind="${kind}" data-act="${act}" data-id="${c.id}">${text}</cds-button>`;
+    if (c.state === 'ringing') { l2 = `呼出中 残り <span class="rl" data-end="${dsAt + c.ringLeft}"></span>秒`; acts = btn('primary', 'answer', '応答') + btn('secondary', 'endCall', '却下'); }
+    else if (c.kind === 'reply') { l2 = '一斉通話への応答中'; acts = btn('secondary', 'endCall', '終話'); }
+    else { l2 = `個別通話 指令員${c.dispatchers.length}名` + (mine ? (y.muted ? '(ミュート中)' : '(送話中)') : ''); acts = mine ? btn('danger', 'endCall', '終話') : btn('primary', 'answer', '応答(話す)') + btn('secondary', 'join', '参加(聞く)') + btn('secondary', 'endCall', '終話'); }
     return `<div class="call ${c.state === 'ringing' ? 'ringing' : c.kind === 'reply' ? 'reply' : ''}"><div class="l1">${c.state === 'ringing' ? '呼出列車: ' : ''}${trains}</div><div class="l2">${l2}</div><div class="acts">${acts}</div></div>`;
   }).join('') : '<div class="empty">通話はありません</div>';
   // 列車一覧
   $('#dTrains').innerHTML = DS.trains.length ? DS.trains.map((t) =>
-    `<div class="row ${t.online ? '' : 'off'}" data-id="${t.id}"><span class="no">${esc(t.trainNo)}</span><span class="sec">${secTxt(t.section) || '<span style="color:var(--dim)">位置不明</span>'}</span><span class="lab">${esc(t.label)}${t.guard ? ' <span class="flag">防護発報</span>' : ''}${t.online ? '' : ' 切断中'}</span><button data-act="callTrain" data-no="${esc(t.trainNo)}" ${DS.ch === 2 || inBc ? 'disabled' : ''}>個別呼出</button></div>`).join('')
+    `<div class="row ${t.online ? '' : 'off'}" data-id="${t.id}"><span class="no">${esc(t.trainNo)}</span><span class="sec">${secTxt(t.section) || '<span class="lab">位置不明</span>'}</span><span class="lab">${esc(t.label)}${t.guard ? ' <span class="flag">防護発報</span>' : ''}${t.online ? '' : ' 切断中'}</span><cds-button size="sm" kind="ghost" data-act="callTrain" data-no="${esc(t.trainNo)}" ${DS.ch === 2 || inBc ? 'disabled' : ''}>個別呼出</cds-button></div>`).join('')
     : '<div class="empty">接続中の列車はありません</div>';
   // 防護発報
   $('#dGuards').innerHTML = DS.guards.length ? DS.guards.map((g) =>
-    `<div class="guard"><b class="mono">${esc(g.trainNo)}</b> ${secTxt(g.section)} <span class="mono">${esc(g.label)}</span>${g.ch !== DS.ch ? ` <span class="flag">${esc(CH_NAME[g.ch])}から越境</span>` : ''}<div class="acts"><button data-act="forceGuard" data-no="${esc(g.trainNo)}">強制解除</button></div></div>`).join('')
+    `<div class="guard"><b class="mono">${esc(g.trainNo)}</b> ${secTxt(g.section)} <span class="mono">${esc(g.label)}</span>${g.ch !== DS.ch ? ` <span class="flag">${esc(CH_NAME[g.ch])}から越境</span>` : ''}<div class="acts"><cds-button size="sm" kind="danger--tertiary" data-act="forceGuard" data-no="${esc(g.trainNo)}">強制解除</cds-button></div></div>`).join('')
     : '<div class="empty">発報はありません</div>';
   tickRing();
 }
@@ -211,75 +219,86 @@ setInterval(() => {
   document.querySelectorAll('#dTrains .row').forEach((r) => r.classList.toggle('talk', n - (audio.heard.get(+r.dataset.id) || -1e9) < 400));
 }, 200);
 document.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-act]'); if (!b || !DS) return; const a = b.dataset.act;
+  const b = e.target.closest('[data-act]'); if (!b || !DS || b.disabled) return; const a = b.dataset.act;
   if (a === 'answer' || a === 'join' || a === 'endCall') sendJson({ t: a, id: +b.dataset.id });
   else if (a === 'callTrain') sendJson({ t: 'callTrain', trainNo: b.dataset.no });
   else if (a === 'forceGuard') sendJson({ t: 'forceGuard', trainNo: b.dataset.no });
 });
-$('#dBc').addEventListener('click', () => sendJson({ t: DS && DS.you.mode && DS.you.mode.type === 'bc' ? 'end' : 'bcStart' }));
-$('#dMute').addEventListener('click', () => DS && sendJson({ t: 'mute', on: !(DS.you.muted && !DS.you.hold) }));
-$('#dHold').addEventListener('click', () => DS && sendJson({ t: 'hold', on: !DS.you.hold }));
-$('#dLeave').addEventListener('click', () => sendJson({ t: 'leave' }));
-$('#dCallForm').addEventListener('submit', (e) => { e.preventDefault(); const v = $('#dCallNo').value.trim(); if (v) { sendJson({ t: 'callTrain', trainNo: v }); $('#dCallNo').value = ''; } });
+$('#dBc').addEventListener('click', (e) => !e.currentTarget.disabled && sendJson({ t: DS && DS.you.mode && DS.you.mode.type === 'bc' ? 'end' : 'bcStart' }));
+$('#dMute').addEventListener('click', (e) => DS && !e.currentTarget.disabled && sendJson({ t: 'mute', on: !(DS.you.muted && !DS.you.hold) }));
+$('#dHold').addEventListener('click', (e) => DS && !e.currentTarget.disabled && sendJson({ t: 'hold', on: !DS.you.hold }));
+$('#dLeave').addEventListener('click', (e) => !e.currentTarget.disabled && sendJson({ t: 'leave' }));
+const callNo = () => { const v = $('#dCallNo').value.trim(); if (v) { sendJson({ t: 'callTrain', trainNo: v }); $('#dCallNo').value = ''; } };
+$('#dCallGo').addEventListener('click', callNo);
+$('#dCallNo').addEventListener('keydown', (e) => { if (e.key === 'Enter') callNo(); });
 $('#dSettings').addEventListener('click', () => openSettings());
 $('#dDetail').addEventListener('click', () => openDetail());
 
 // ------------------------------------------------------------ モーダル
 const modal = $('#modal'); let modalCleanup = null;
-function openModal(title, html, onOpen, cleanup) { $('#mTitle').textContent = title; $('#mBody').innerHTML = html; modal.hidden = false; modalCleanup = cleanup || null; onOpen && onOpen($('#mBody')); }
-function closeModal() { modal.hidden = true; if (modalCleanup) { modalCleanup(); modalCleanup = null; } captureKey = false; }
-$('#mClose').addEventListener('click', closeModal);
-modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeModal(); });
-addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) closeModal(); });
+function openModal(title, html, onOpen, cleanup) {
+  $('#mTitle').textContent = title; $('#mBody').innerHTML = html;
+  $('#mBody').querySelectorAll('cds-select[data-value]').forEach((el) => { el.value = el.dataset.value; });
+  modal.open = true; modalCleanup = cleanup || null; onOpen && onOpen($('#mBody')); }
+function closeModal() { if (modal.open) modal.open = false; if (modalCleanup) { modalCleanup(); modalCleanup = null; } captureKey = false; }
+modal.addEventListener('cds-modal-closed', closeModal);   // ×・Esc・背景クリックで閉じたとき
 const keyLabel = (c) => c.replace(/^Key/, '').replace(/^Digit/, '');
 let captureKey = false;
 const KEY_OK = /^(F([1-9]|1[0-2])|Key[A-Z]|Digit[0-9]|Space)$/;
 
+const slider = (id, label, v) => `<cds-slider id="${id}" label-text="${label}" min="0" max="10" step="1" value="${v}" hide-text-input></cds-slider>`;
+// 初期値は data-value に入れ、openModal が .value に反映する(cds-select-item の selected 属性だけでは値が入らないため)
+const select = (id, label, opts, cur) => `<cds-select id="${id}" label-text="${label}" data-value="${esc(cur)}">${opts.map(([v, t]) => `<cds-select-item value="${esc(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(t)}</cds-select-item>`).join('')}</cds-select>`;
+const keyText = () => keyLabel(cfg.pttKey) + '(クリックして変更)';
 function openSettings() {
   const isTrain = welcome && welcome.role === 'train';
   const html = `
-  <section><h3>音量</h3>
-    <label>指令の音量 <input type="range" id="sVd" min="0" max="10" value="${cfg.volDisp}"></label>
-    <label>他列車の音量 <input type="range" id="sVt" min="0" max="10" value="${cfg.volTrain}"></label></section>
-  <section><h3>無線らしさ</h3><div class="two">
-    <label>歪み <input type="range" id="sDr" min="0" max="10" value="${cfg.drive}"></label></div></section>
-  ${D ? `<section><h3>音声デバイス</h3><label>入力(マイク)<select id="sIn"></select></label><label>出力(スピーカー)<select id="sOut"></select></label></section>` : ''}
-  <section><h3>マイク確認</h3><button id="sMon">確認モード 開始</button><div class="meter"><i id="sMeter"></i></div>
-    <p class="hint">無線加工後の自分の声がスピーカーから聞こえます。ハウリング防止のためイヤホンを推奨します。</p></section>
-  ${isTrain ? `<section><h3>送話キー(押している間だけ送話)</h3><button id="sKey">${esc(keyLabel(cfg.pttKey))}(クリックして変更)</button></section>` : ''}
-  ${D ? `<section><h3>ウィンドウ</h3><label class="chk"><input type="checkbox" id="sTop" ${cfg.onTop ? 'checked' : ''}> 無線機を最前面に固定</label>
-    ${isTrain ? `<label>表示倍率<select id="sScale">${[0.75, 1, 1.25, 1.5, 2].map((v) => `<option value="${v}" ${v === cfg.scale ? 'selected' : ''}>${v}倍</option>`).join('')}</select></label>` : ''}</section>` : ''}
+  <section><h3>音量</h3>${slider('sVd', '指令の音量', cfg.volDisp)}${slider('sVt', '他列車の音量', cfg.volTrain)}</section>
+  <section><h3>無線らしさ</h3>${slider('sDr', '歪み', cfg.drive)}</section>
+  ${D ? `<section><h3>音声デバイス</h3>${select('sIn', '入力(マイク)', [['', '既定のデバイス']], '')}${select('sOut', '出力(スピーカー)', [['', '既定のデバイス']], '')}</section>` : ''}
+  <section><h3>マイク確認</h3><div class="monrow"><cds-button id="sMon" kind="tertiary" size="md">確認モード 開始</cds-button><div class="meter"><i id="sMeter"></i></div></div>
+    <p class="hint">ハウリング防止のためイヤホンを推奨します</p></section>
+  ${isTrain ? `<section><h3>送話キー</h3><cds-button id="sKey" kind="tertiary" size="md">${esc(keyText())}</cds-button></section>` : ''}
+  ${D ? `<section><h3>ウィンドウ</h3><cds-checkbox id="sTop" ${cfg.onTop ? 'checked' : ''}>無線機を最前面に固定</cds-checkbox>
+    ${isTrain ? select('sScale', '表示倍率', [0.75, 1, 1.25, 1.5, 2].map((v) => [String(v), v + '倍']), cfg.scale) : ''}</section>` : ''}
   <section><h3>${isTrain ? '列車情報' : '接続チャンネル'}</h3>
-    <label>チャンネル<select id="sCh">${[2, 80, 81].map((c) => `<option value="${c}" ${c === cfg.ch ? 'selected' : ''}>${CH_NAME[c]}</option>`).join('')}</select></label>
-    ${isTrain ? `<label>列車番号<input id="sNo2" maxlength="6" autocapitalize="characters" spellcheck="false" value="${esc(cfg.trainNo)}"></label>
-    <label>車種<select id="sVeh"><option value="shimoden" ${cfg.vehicle === 'shimoden' ? 'selected' : ''}>下電車</option><option value="chikatetsu" ${cfg.vehicle === 'chikatetsu' ? 'selected' : ''}>地下鉄車</option></select></label>` : ''}
-    <button id="sApply">適用</button><p class="hint">${isTrain ? '無線機番号はログアウトするまで変わりません。' : ''}</p></section>
-  <section><button id="sLogout" class="danger">ログアウト</button></section>`;
+    ${select('sCh', 'チャンネル', [2, 80, 81].map((c) => [String(c), CH_NAME[c]]), cfg.ch)}
+    ${isTrain ? `<cds-text-input id="sNo2" label="列車番号" maxlength="6" value="${esc(cfg.trainNo)}" autocomplete="off"></cds-text-input>
+    ${select('sVeh', '車種', [['shimoden', '下電車'], ['chikatetsu', '地下鉄車']], cfg.vehicle)}` : ''}
+    <div><cds-button id="sApply" kind="primary" size="md">適用</cds-button></div></section>
+  <section><div><cds-button id="sLogout" kind="danger" size="md">ログアウト</cds-button></div></section>`;
   openModal('設定', html, async (b) => {
-    const num = (id, k, f) => b.querySelector(id).addEventListener('input', (e) => { cfg[k] = +e.target.value; saveCfg(); applyAudioCfg(); f && f(); });
-    num('#sVd', 'volDisp'); num('#sVt', 'volTrain'); num('#sDr', 'drive');
+    const slide = (id, k) => b.querySelector(id).addEventListener('cds-slider-changed', (e) => { cfg[k] = Number(e.target.value); saveCfg(); applyAudioCfg(); });
+    slide('#sVd', 'volDisp'); slide('#sVt', 'volTrain'); slide('#sDr', 'drive');
     let mon = false; const meter = setInterval(() => { b.querySelector('#sMeter').style.width = (audio.level() * 100) + '%'; }, 60);
-    b.querySelector('#sMon').addEventListener('click', (e) => { mon = !mon; audio.setMonitor(mon); e.target.textContent = mon ? '確認モード 停止' : '確認モード 開始'; e.target.classList.toggle('active', mon); });
+    b.querySelector('#sMon').addEventListener('click', (e) => { const btn = e.currentTarget; mon = !mon; audio.setMonitor(mon); btn.textContent = mon ? '確認モード 停止' : '確認モード 開始'; btn.kind = mon ? 'primary' : 'tertiary'; });
     modalCleanup = () => { clearInterval(meter); audio.setMonitor(false); };
     if (D) {
       let devs = []; try { devs = await navigator.mediaDevices.enumerateDevices(); } catch (e) {}
-      const fill = (id, kind, cur, set) => { const sel = b.querySelector(id); sel.innerHTML = '<option value="">既定のデバイス</option>' + devs.filter((d) => d.kind === kind).map((d) => `<option value="${esc(d.deviceId)}" ${d.deviceId === cur ? 'selected' : ''}>${esc(d.label || d.deviceId)}</option>`).join(''); sel.addEventListener('change', () => { set(sel.value); saveCfg(); }); };
+      const fill = (id, kind, cur, set) => {
+        const sel = b.querySelector(id);
+        sel.innerHTML = [['', '既定のデバイス'], ...devs.filter((d) => d.kind === kind).map((d) => [d.deviceId, d.label || d.deviceId])]
+          .map(([v, t]) => `<cds-select-item value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(t)}</cds-select-item>`).join('');
+        sel.value = devs.some((d) => d.kind === kind && d.deviceId === cur) ? cur : '';
+        sel.addEventListener('cds-select-selected', () => { set(sel.value); saveCfg(); });
+      };
       fill('#sIn', 'audioinput', cfg.inDev, async (v) => { cfg.inDev = v; try { await audio.startMic(v); } catch (e) { toast('マイクを切り替えできません', 'warn'); } });
       fill('#sOut', 'audiooutput', cfg.outDev, (v) => { cfg.outDev = v; audio.setOutput(v); });
-      b.querySelector('#sTop').addEventListener('change', (e) => { cfg.onTop = e.target.checked; saveCfg(); D.setAlwaysOnTop(cfg.onTop); });
-      const sc = b.querySelector('#sScale'); if (sc) sc.addEventListener('change', () => { cfg.scale = +sc.value; saveCfg(); fit(); });
+      b.querySelector('#sTop').addEventListener('cds-checkbox-changed', (e) => { cfg.onTop = e.target.checked; saveCfg(); D.setAlwaysOnTop(cfg.onTop); });
+      const sc = b.querySelector('#sScale'); if (sc) sc.addEventListener('cds-select-selected', () => { cfg.scale = Number(sc.value); saveCfg(); fit(); });
     }
     const kb = b.querySelector('#sKey');
     if (kb) kb.addEventListener('click', () => {
-      captureKey = true; kb.textContent = '割り当てるキーを押してください…';
+      if (captureKey) return;
+      captureKey = true; kb.textContent = '割り当てるキーを押してください';
       const h = (e) => { e.preventDefault(); e.stopPropagation(); removeEventListener('keydown', h, true);
-        if (e.key === 'Escape') { captureKey = false; kb.textContent = keyLabel(cfg.pttKey) + '(クリックして変更)'; return; }
-        if (D && !KEY_OK.test(e.code)) { toast('PC版で使えるキーは F1〜F12 / 英字 / 数字 / スペース です', 'warn'); captureKey = false; kb.textContent = keyLabel(cfg.pttKey) + '(クリックして変更)'; return; }
-        cfg.pttKey = e.code; saveCfg(); captureKey = false; if (D) D.setPttKey(cfg.pttKey); kb.textContent = keyLabel(cfg.pttKey) + '(クリックして変更)'; renderTrain(); };
+        if (e.key === 'Escape') { captureKey = false; kb.textContent = keyText(); return; }
+        if (D && !KEY_OK.test(e.code)) { toast('PC版で使えるキーは F1〜F12 / 英字 / 数字 / スペース です', 'warn'); captureKey = false; kb.textContent = keyText(); return; }
+        cfg.pttKey = e.code; saveCfg(); captureKey = false; if (D) D.setPttKey(cfg.pttKey); kb.textContent = keyText(); renderTrain(); };
       addEventListener('keydown', h, true);
     });
     b.querySelector('#sApply').addEventListener('click', () => {
-      const ch = +b.querySelector('#sCh').value; let no = cfg.trainNo, veh = cfg.vehicle;
+      const ch = Number(b.querySelector('#sCh').value); let no = cfg.trainNo, veh = cfg.vehicle;
       if (isTrain) { no = b.querySelector('#sNo2').value.trim().toUpperCase(); veh = b.querySelector('#sVeh').value; if (!/^[0-9A-Z]{1,6}$/.test(no) || no === '12306') return toast('列車番号は半角英数字(6文字まで)で入力してください(12306は指令専用です)', 'warn'); }
       Object.assign(cfg, { ch, trainNo: no, vehicle: veh }); saveCfg(); sendJson({ t: 'hello', key, ch, trainNo: no, vehicle: veh, password: pw }); closeModal();
     });
@@ -289,18 +308,18 @@ function openSettings() {
 function openDetail() {
   const s = DS && DS.settings; if (!s) return;
   const st = (c) => { const j = s.jsonStatus[c]; return j.ok ? `取得OK(${j.count}列車 / 時差${j.ageSec}秒)` : `取得失敗: ${esc(j.err || '未取得')}`; };
-  const f = (id, label, v, extra = '') => `<label>${label}<input id="${id}" value="${esc(v)}" ${extra}></label>`;
+  const f = (id, label, v) => `<cds-text-input id="${id}" label="${label}" value="${esc(v)}" autocomplete="off"></cds-text-input>`;
   openModal('詳細設定(サーバー)', `
   <section><h3>走行位置JSON</h3>
     ${f('dU80', '80ch(南北線)のURL', s.jsonUrls[80])}<p class="hint">${st(80)}</p>
     ${f('dU81', '81ch(東西線)のURL', s.jsonUrls[81])}<p class="hint">${st(81)}</p>
-    <div class="two">${f('dPoll', '取得間隔(秒)', s.pollIntervalSec, 'inputmode="decimal"')}${f('dStale', '位置不明にする時差(秒)', s.staleSec, 'inputmode="numeric"')}</div></section>
-  <section><h3>通話・防護発報</h3><div class="two">${f('dRing', '呼出の自動切断(秒)', s.ringTimeoutSec, 'inputmode="numeric"')}${f('dRange', '防護発報の範囲(±pos)', s.guardRange, 'inputmode="decimal"')}</div>
-    <div class="two">${f('dBmin', '2chへ越境するpos(下限)', s.borderMin, 'inputmode="decimal"')}${f('dBmax', '同(上限・80chのみ)', s.borderMax, 'inputmode="decimal"')}</div></section>
-  <section><h3>通話の録音</h3><label class="chk"><input type="checkbox" id="dRec" ${s.recordEnabled ? 'checked' : ''}> 通話を録音して保存する(保存先はサーバーの recordings フォルダ)</label>
-    ${f('dKeep', '古い録音を自動削除する日数(0=削除しない)', s.recordKeepDays, 'inputmode="numeric"')}</section>
-  <section><h3>指令パスワード</h3><label>新しいパスワード(変更しない場合は空欄)<input id="dPw" type="text" autocomplete="off"></label></section>
-  <section><button id="dSave" class="primary">保存</button></section>`, (b) => {
+    <div class="two">${f('dPoll', '取得間隔(秒)', s.pollIntervalSec)}${f('dStale', '位置不明にする時差(秒)', s.staleSec)}</div></section>
+  <section><h3>通話・防護発報</h3><div class="two">${f('dRing', '呼出の自動切断(秒)', s.ringTimeoutSec)}${f('dRange', '防護発報の範囲(±pos)', s.guardRange)}</div>
+    <div class="two">${f('dBmin', '2chへ越境するpos(下限)', s.borderMin)}${f('dBmax', '同(上限・80chのみ)', s.borderMax)}</div></section>
+  <section><h3>通話の録音</h3><cds-checkbox id="dRec" ${s.recordEnabled ? 'checked' : ''}>通話を録音する</cds-checkbox>
+    ${f('dKeep', '古い録音を自動削除する日数(0=削除しない)', s.recordKeepDays)}</section>
+  <section><h3>指令パスワード</h3>${f('dPw', '新しいパスワード(変更時のみ)', '')}</section>
+  <section><div><cds-button id="dSave" kind="primary" size="md">保存</cds-button></div></section>`, (b) => {
     b.querySelector('#dSave').addEventListener('click', () => {
       const g = (id) => b.querySelector(id).value.trim(), npw = g('#dPw');
       sendJson({ t: 'setSettings', s: { jsonUrls: { 80: g('#dU80'), 81: g('#dU81') }, pollIntervalSec: g('#dPoll'), staleSec: g('#dStale'), ringTimeoutSec: g('#dRing'), guardRange: g('#dRange'), borderMin: g('#dBmin'), borderMax: g('#dBmax'), recordEnabled: b.querySelector('#dRec').checked, recordKeepDays: g('#dKeep'), newPassword: npw || undefined } });
@@ -310,7 +329,7 @@ function openDetail() {
 }
 
 // ------------------------------------------------------------ 起動
-$('#fCh').value = cfg.ch; $('#fNo').value = cfg.trainNo; $('#fVeh').value = cfg.vehicle; $('#fSrv').value = cfg.server; syncLoginRows();
+$('#fCh').value = String(cfg.ch); $('#fNo').value = cfg.trainNo; $('#fVeh').value = cfg.vehicle; $('#fSrv').value = cfg.server; syncLoginRows();
 if (D) { D.setPttKey(cfg.pttKey); D.setAlwaysOnTop(cfg.onTop); }
 document.addEventListener('contextmenu', (e) => { if ($('#train').hidden === false) e.preventDefault(); });
 window.__radio = { audio, loops, state: () => ({ S, DS, welcome }) };   // デバッグ・自動テスト用

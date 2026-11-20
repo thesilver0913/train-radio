@@ -43,6 +43,13 @@ jobs:
         with:
           name: windows
           path: dist/TrainRadio-Setup-*.exe
+      - uses: actions/upload-artifact@v5   # 動作確認用(インストールせずに試す)
+        with:
+          name: windows-exe
+          path: |
+            dist/TrainRadio.exe
+            dist/TrainRadioServer.exe
+            dist/TrainRadioServerCore.exe
 
   android:
     runs-on: ubuntu-latest
@@ -78,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v5
-        with: { path: out, merge-multiple: true }
+        with: { path: out, merge-multiple: true, pattern: '{windows,android}' }
       - uses: softprops/action-gh-release@v2
         with:
           files: out/*
