@@ -4,7 +4,7 @@
 (() => {
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const CH_NAME = { 2: '2ch(下電)', 80: '80ch(南北線)', 81: '81ch(東西線)' };
+const CH_NAME = { 2: '2ch(下電)', 80: '80ch(南北線)', 81: '81ch(東西線)', 85: '85ch(非常用)' };
 const ROLE = { train: '列車', listen: '傍受', dispatcher: '指令' };
 
 // ------------------------------------------------------------ 管理アプリとの橋渡し
@@ -71,7 +71,7 @@ function renderState(s) {
   $('#count').textContent = on.length; $('#countSub').textContent = `列車 ${n('train')} / 指令 ${n('dispatcher')} / 傍受 ${n('listen')}`;
   $('#chans').innerHTML = s.channels.map((c) => {
     const act = c.calls.filter((x) => x.state === 'active').length, ring = c.calls.filter((x) => x.state === 'ringing').length;
-    const v = c.busy ? (c.bc ? '一斉通話中' : `通話中 ${act}件`) : '待機'; return `<span>${esc(CH_NAME[c.ch])}</span><span class="${c.busy ? 'on' : 'dim'}">${v}${ring ? ` / 呼出 ${ring}件` : ''}</span>`;
+    const v = c.busy ? (c.bc ? '一斉通話中' : act ? `通話中 ${act}件` : '送信中') : '待機'; return `<span>${esc(CH_NAME[c.ch])}</span><span class="${c.busy ? 'on' : 'dim'}">${v}${ring ? ` / 呼出 ${ring}件` : ''}</span>`;
   }).join('');
   $('#json').innerHTML = [80, 81].map((ch) => {
     const j = s.jsonStatus[ch]; const v = j.ok ? `取得OK ${j.count}列車 / 時差 ${j.ageSec}秒` : `取得失敗 ${esc(j.err || '未取得')}`;

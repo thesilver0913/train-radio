@@ -129,6 +129,16 @@ let n = 0; const ok = (m) => console.log(`  ✓ ${++n}. ${m}`);
   [T2, t2, D].forEach((c) => c.clear()); const D2ch = await disp('D2ch', 2); T2.tx({ t: 'handset', up: true }); await sleep(60); assert(T2.st.handset === 'down' && T2.st.canPtt); ok('2ch: 受話器を上げても何も起きず、PTTは常に可能');
   T2.frame(); await sleep(100); assert(D2ch.audio.length === 1 && t2.audio.length === 0); ok('2ch: PTTの声は指令だけに届き、他列車には聞こえない');
   D2ch.tx({ t: 'bcStart' }); await sleep(60); assert(!T2.ev('chime').length); t2.clear(); T2.frame(); await sleep(100); assert(t2.audio.length === 1); ok('2ch: 指令の通話開始中は他列車にも聞こえる(チャイムなし)');
+  // --- 85ch(非常用)
+  const D85 = await disp('D85', 85), P = await train('P', 85, '7001'), Q = await train('Q', 85, '7002'), R = await train('R', 85, '7003');
+  P.tx({ t: 'handset', up: true }); P.tx({ t: 'test' }); await sleep(60); assert(P.st.handset === 'down' && P.st.canPtt && !Q.ev('testOK').length && !P.st.busy); ok('85ch: 受話器・試験は無効、PTTは常に可能、無音時は話中消灯');
+  [D85, P, Q, R, T2, D2ch].forEach((c) => c.clear()); P.frame(); await until(() => Q.st.busy && R.st.busy && D85.st.busy, 500, '85 busy');
+  await sleep(80); assert(Q.audio.length === 1 && R.audio.length === 1 && D85.audio.length === 1 && P.audio.length === 0 && T2.audio.length === 0 && D2ch.audio.length === 0); ok('85ch: 列車の声は指令の通話開始なしで全列車と指令に届き、他チャンネルには届かない・話中点灯');
+  await until(() => !Q.st.busy && !D85.st.busy, 1000, '85 idle'); ok('85ch: 音声が途切れると話中消灯');
+  D85.tx({ t: 'callTrain', trainNo: '7001' }); await sleep(60); assert(D85.msgs.some((m) => m.t === 'toast' && /85ch/.test(m.msg)) && !D85.st.calls.length); ok('85ch: 個別呼出は不可');
+  D85.tx({ t: 'bcStart' }); await sleep(60); assert(!P.ev('chime').length && !P.st.busy); ok('85ch: 一斉開始だけでは話中にならない(チャイムなし)');
+  [P, Q, R].forEach((c) => c.clear()); D85.frame(); await sleep(80); assert(P.audio.length === 1 && Q.audio.length === 1 && R.audio.length === 1 && P.st.busy); ok('85ch: 指令の一斉は全列車に届く');
+  D85.tx({ t: 'end' }); await until(() => !P.st.busy, 1000, '85 end');
   // --- 位置情報の鮮度
   jsonNowOffset = -700; await sleep(1500); assert.strictEqual(D.st.trains.find((t) => t.trainNo === '6110').section, null); ok('JSONのnowが10分以上ずれると位置不明扱い');
   jsonNowOffset = 0; await sleep(1500); assert(D.st.trains.find((t) => t.trainNo === '6110').section); 
@@ -154,6 +164,8 @@ let n = 0; const ok = (m) => console.log(`  ✓ ${++n}. ${m}`);
   ok(`同時に話した2人の音声がミックスされて録音される(440Hz=${a440.toFixed(2)} / 1000Hz=${a1000.toFixed(2)})`);
   D81.tx({ t: 'bcStart' }); await sleep(100); for (let k = 0; k < 10; k++) { aframe(D81, 440, 0.3, k); await sleep(20); } D81.tx({ t: 'end' }); await sleep(1600);
   files = recFiles(); assert.strictEqual(files.length, 2); ok('猶予時間を超えてから始まった通話は別ファイルになる');
+  for (let k = 0; k < 25; k++) { aframe(P, 440, 0.3, k); await sleep(20); } await sleep(1600);
+  assert(!fs.readdirSync(RECDIR).some((f) => f.startsWith('85ch_'))); ok('85chは録音しない');
 
   // --- 設定変更
   D.tx({ t: 'setSettings', s: { newPassword: 'pw2', pollIntervalSec: 2 } }); await sleep(100);

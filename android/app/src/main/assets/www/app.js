@@ -2,7 +2,8 @@
 (() => {
 const $ = (s, r = document) => r.querySelector(s);
 const D = window.desktop || null;                         // PC版(Tauri / pc-client)のときのみ存在
-const CH_NAME = { 2: '2ch(下電)', 80: '80ch(南北線)', 81: '81ch(東西線)' };
+const CH_NAME = { 2: '2ch(下電)', 80: '80ch(南北線)', 81: '81ch(東西線)', 85: '85ch(非常用)' };
+const OPEN = (ch) => ch === 2 || ch === 85; // 個別通話・受話器・試験のないチャンネル
 const DEF = { ch: 80, trainNo: '', vehicle: 'shimoden', server: '', pttKey: 'F6', volDisp: 7, volTrain: 7, drive: 5, inDev: '', outDev: '', scale: 1, onTop: false };
 const cfg = Object.assign({}, DEF, (() => { try { return JSON.parse(localStorage.getItem('trainradio.cfg') || '{}'); } catch (e) { return {}; } })());
 const saveCfg = () => localStorage.setItem('trainradio.cfg', JSON.stringify(cfg));
@@ -131,7 +132,7 @@ function renderTrain() {
   $('#hsOverlay').className = on && S.handset !== 'down' ? 'up' + (S.handset === 'ringing' ? ' ring' : '') : '';
   $('#radio').classList.toggle('off', !on);
   const pb = $('#ptt'), can = on && S.canPtt;
-  pb.disabled = !can; pb.textContent = can ? `送話 (${keyLabel(cfg.pttKey)})` : on && S.listen ? '傍受専用' : (on && S.ch !== 2 ? '受話器を上げて呼出' : '送話');
+  pb.disabled = !can; pb.textContent = can ? `送話 (${keyLabel(cfg.pttKey)})` : on && S.listen ? '傍受専用' : (on && !OPEN(S.ch) ? '受話器を上げて呼出' : '送話');
   if (!can && ptt) pttSet(false);
   $('#trainInfo').innerHTML = welcome && welcome.role === 'train'
     ? `<b>${esc(welcome.label)}</b>${esc(CH_NAME[welcome.ch])} 列車 ${esc(cfg.trainNo)}${on ? '' : ' (未接続)'}${on && S.listen ? '<br><span class="flag">傍受専用(操作はできません)</span>' : ''}${on && S.guardRecv ? '<br><span class="flag">防護発報を受信中</span>' : ''}` : '';
@@ -159,12 +160,12 @@ addEventListener('blur', () => { if (!D) pttSet(false); });
 if (D) D.onPtt((on) => { if (!$('#train').hidden) pttSet(on); });
 
 $('#zHandset').addEventListener('click', () => {            // 受話器: 下→指令呼出/割込、発信中→取消、通話中は戻しても通話は継続
-  if (!connected() || !S || S.ch === 2 || S.listen) return;
+  if (!connected() || !S || OPEN(S.ch) || S.listen) return;
   if (S.handset === 'down') sendJson({ t: 'handset', up: true }); else if (S.handset === 'ringing') sendJson({ t: 'handset', up: false });
 });
 $('#zGuard').addEventListener('click', () => { if (connected() && S && !S.listen) sendJson({ t: 'guard', on: !S.guardSend }); });
 $('#zTest').addEventListener('click', () => {
-  if (!connected() || !S || S.ch === 2 || S.listen || Date.now() < testUntil) return;
+  if (!connected() || !S || OPEN(S.ch) || S.listen || Date.now() < testUntil) return;
   sendJson({ t: 'test' }); audio.sendTone(3000);
 });
 function stepVol(d) { cfg.volDisp = Math.max(0, Math.min(10, cfg.volDisp + d)); saveCfg(); applyAudioCfg(); toast(`指令の音量 ${cfg.volDisp}`); }
@@ -205,7 +206,7 @@ function renderDisp() {
   }).join('') : '<div class="empty">通話はありません</div>';
   // 列車一覧
   $('#dTrains').innerHTML = DS.trains.length ? DS.trains.map((t) =>
-    `<div class="row ${t.online ? '' : 'off'}" data-id="${t.id}"><span class="no">${esc(t.trainNo)}</span><span class="sec">${secTxt(t.section) || '<span class="lab">位置不明</span>'}</span><span class="lab">${esc(t.label)}${t.guard ? ' <span class="flag">防護発報</span>' : ''}${t.online ? '' : ' 切断中'}</span><cds-button size="sm" kind="ghost" data-act="callTrain" data-no="${esc(t.trainNo)}" ${DS.ch === 2 || inBc ? 'disabled' : ''}>個別呼出</cds-button></div>`).join('')
+    `<div class="row ${t.online ? '' : 'off'}" data-id="${t.id}"><span class="no">${esc(t.trainNo)}</span><span class="sec">${secTxt(t.section) || '<span class="lab">位置不明</span>'}</span><span class="lab">${esc(t.label)}${t.guard ? ' <span class="flag">防護発報</span>' : ''}${t.online ? '' : ' 切断中'}</span><cds-button size="sm" kind="ghost" data-act="callTrain" data-no="${esc(t.trainNo)}" ${OPEN(DS.ch) || inBc ? 'disabled' : ''}>個別呼出</cds-button></div>`).join('')
     : '<div class="empty">接続中の列車はありません</div>';
   // 防護発報
   $('#dGuards').innerHTML = DS.guards.length ? DS.guards.map((g) =>
@@ -262,7 +263,7 @@ function openSettings() {
   ${D ? `<section><h3>ウィンドウ</h3><cds-checkbox id="sTop" ${cfg.onTop ? 'checked' : ''}>無線機を最前面に固定</cds-checkbox>
     ${isTrain ? select('sScale', '表示倍率', [0.75, 1, 1.25, 1.5, 2].map((v) => [String(v), v + '倍']), cfg.scale) : ''}</section>` : ''}
   <section><h3>${isTrain ? '列車情報' : '接続チャンネル'}</h3>
-    ${select('sCh', 'チャンネル', [2, 80, 81].map((c) => [String(c), CH_NAME[c]]), cfg.ch)}
+    ${select('sCh', 'チャンネル', [2, 80, 81, 85].map((c) => [String(c), CH_NAME[c]]), cfg.ch)}
     ${isTrain ? `<cds-text-input id="sNo2" label="列車番号" maxlength="6" value="${esc(cfg.trainNo)}" autocomplete="off"></cds-text-input>
     ${select('sVeh', '車種', [['shimoden', '下電車'], ['chikatetsu', '地下鉄車']], cfg.vehicle)}` : ''}
     <div><cds-button id="sApply" kind="primary" size="md">適用</cds-button></div></section>
