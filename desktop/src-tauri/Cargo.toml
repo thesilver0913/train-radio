@@ -14,7 +14,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 
 [profile.release]
 opt-level = "s"

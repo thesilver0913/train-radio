@@ -6,9 +6,16 @@ android {
         applicationId 'local.trainradio'
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        versionCode (System.getenv('VERSION_CODE') ?: '1') as int
+        versionName System.getenv('VERSION_NAME') ?: '1.0'
     }
-    buildTypes { release { minifyEnabled false } }
+    // 署名鍵は GitHub Actions が環境変数で渡す(未指定なら release は未署名)
+    def ks = System.getenv('KEYSTORE_FILE')
+    signingConfigs {
+        release {
+            if (ks) { storeFile file(ks); storePassword System.getenv('KEYSTORE_PASSWORD'); keyAlias 'trainradio'; keyPassword System.getenv('KEYSTORE_PASSWORD') }
+        }
+    }
+    buildTypes { release { minifyEnabled false; if (ks) signingConfig signingConfigs.release } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }

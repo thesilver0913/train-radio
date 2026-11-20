@@ -46,9 +46,37 @@ jobs:
           name: windows
           path: dist/TrainRadio-Setup-*.exe
 
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.5' }
+
+      - name: Version
+        run: echo "VERSION=$([[ $GITHUB_REF == refs/tags/v* ]] && echo ${GITHUB_REF_NAME#v} || echo 0.0.0-dev)" >> $GITHUB_ENV
+
+      - name: APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          node android/sync-assets.js
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          KEYSTORE_FILE="$RUNNER_TEMP/release.jks" VERSION_NAME="$VERSION" gradle -p android assembleRelease --no-daemon
+          mkdir -p dist && cp android/app/build/outputs/apk/release/app-release.apk "dist/TrainRadio-$VERSION.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*.apk
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows]
+    needs: [windows, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

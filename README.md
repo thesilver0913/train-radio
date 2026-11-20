@@ -9,6 +9,29 @@
 | `pc-client/` | PC版の起動プログラム(Node.js)。指令卓はPC版のみ |
 | `android/` | Android版(列車側のみ)のプロジェクト。**APKのビルドが必要**(下記) |
 
+## インストール(Windows / Android)
+[Releases](https://github.com/thesilver0913/train-radio/releases) から入手します。Node.js のインストールは不要です。
+- **Windows**: `TrainRadio-Setup-x.y.z.exe` を実行し、「サーバー」「PC版クライアント」を選んでインストール(管理者権限・Program Files)。
+  - サーバー(`TrainRadioServer.exe`)はウィンドウを出さずタスクトレイに常駐します。右クリックで状態(接続先アドレス)・設定ファイル・録音フォルダ・終了。サインイン時の自動起動とファイアウォール許可はインストール時に選べます。
+  - 設定は `C:\ProgramData\TrainRadio\config.json`、録音は `ドキュメント\TrainRadio\recordings` に保存します。
+  - PC版(`TrainRadio.exe`)は WebView2 で動く独立したアプリです(Windows 11 は標準搭載)。送話キーは他のアプリが前面でも効きます。
+- **Android**: `TrainRadio-x.y.z.apk` を端末に入れてインストール(提供元不明アプリの許可が必要)。新しい版は上書きインストールできます。
+
+## ビルドとリリース
+`v1.2.3` のようなタグを push すると、GitHub Actions がインストーラーとAPKをビルドして Releases に登録します(Actions 画面から手動実行するとビルドのみ)。
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+| 成果物 | 中身 | 手元でのビルド |
+|---|---|---|
+| `TrainRadioServer.exe` | Node.js 単一実行ファイル(SEA)。同じフォルダの `server/*.js` を読み込む | `npm ci && npm run build:server`(Node.js 25.5以上) |
+| `TrainRadio.exe` | Tauri 2(Rust)。画面は `client/` を埋め込み | `cd desktop && npm ci && npx tauri build --no-bundle`(Rust が必要) |
+| インストーラー | Inno Setup 6(`installer/TrainRadio.iss`) | 上の2つを `dist/` に置いて `iscc installer\TrainRadio.iss` |
+| APK | 署名鍵は GitHub Secrets(`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD`、別名 `trainradio`) | Android Studio(下記) |
+
+以下は Node.js で直接動かす場合の説明です。
+
 Web版(スマホのブラウザから開く方式)は廃止しました。サーバーは音声・制御のWebSocketと効果音の配信だけを行い、画面は各クライアントが持ちます。
 
 ## 1. サーバー
