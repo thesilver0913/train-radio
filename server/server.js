@@ -18,7 +18,9 @@ const DISPATCH_NO = '12306', LISTEN_NO = '9999';   // 9999 = 傍受専用(全通
 const CHANNELS = [2, 80, 81, 85];
 const EMERG = 85;                       // 85ch(非常用): 一斉のみ。列車の声は常に同チャンネル全員へ、録音なし
 const OPEN = (ch) => ch === 2 || ch === EMERG; // 個別通話・受話器・試験のない全線1ゾーンのチャンネル
-const TALK_MS = 400;                    // 85chの話中: 最後の音声フレームからこの時間で消灯
+const TALK_MS = 400;
+const ADPCM = require('./adpcm');
+const LOUD = 0.01;                      // 無音判定: フレームのRMSがこれ未満なら無音(約-40dBFS)                    // 85chの話中: 最後の音声フレームからこの時間で消灯
 const VEHICLES = { shimoden: 'しもでん', chikatetsu: 'ちかてつ' };
 
 // ---------------------------------------------------------------- 設定
@@ -29,6 +31,7 @@ const DEFAULTS = {
   pollIntervalSec: 7, staleSec: 600, ringTimeoutSec: 30, reconnectGraceSec: 300,
   guardRange: 1.5, borderMin: 7.0, borderMax: 8.5, testDurationMs: 3000,
   recordEnabled: true, recordDir: DOCS ? path.join(DOCS, 'TrainRadio', 'recordings') : 'recordings', recordKeepDays: 0, recordGapSec: 3,
+  silenceCutSec: 60,   // 2/80/81ch: 話中でも無音がこの秒数続いたら通話を切断(録音の肥大化防止)。0=切断しない
 };
 function loadConfig() {
   let c = {}; try { c = JSON.parse(fs.readFileSync(CFG_PATH, 'utf8')); } catch (e) {}
@@ -46,7 +49,7 @@ const parties = new Map();   // id -> party (列車 / 指令)
 const sessions = new Map();  // 再接続キー -> 列車party
 const usedNos = new Set();   // 使用中の無線機番号(しもでん/ちかてつ合算・サーバー全体)
 const chans = {};
-for (const ch of CHANNELS) chans[ch] = { ch, bc: new Set(), calls: new Map(), pos: new Map(), talk: new Map(), jsonNow: 0, lastOk: 0, lastErr: '', testUntil: 0 };
+for (const ch of CHANNELS) chans[ch] = { ch, bc: new Set(), calls: new Map(), pos: new Map(), talk: new Map(), lastSound: Date.now(), jsonNow: 0, lastOk: 0, lastErr: '', testUntil: 0 };
 
 const recorders = {};
 const recSync = () => { for (const ch in recorders) recorders[ch].sync(busy(Number(ch))); };
@@ -160,6 +163,7 @@ function createPending(p) {
   c.timer = setTimeout(() => endCall(c, 'timeout'), cfg.ringTimeoutSec * 1000);
   chans[p.ch].calls.set(c.id, c);
 }
+function addSameNo(c) { for (const t of trainsIn(c.ch)) if (t.trainNo === c.trainNo) c.members.add(t.id); }
 function leaveCalls(p) {
   for (const c of [...chans[p.ch].calls.values()]) if (c.members.has(p.id)) { c.members.delete(p.id); if (c.members.size === 0) endCall(c, 'gone'); }
 }
@@ -204,11 +208,28 @@ function onAudio(conn, buf) {
   else targets = voiceTargets(p);
   if (!targets.length) return;
   if (p.ch === EMERG && !tone) talking(p);
+  else if (tone || (buf[1] === 1 && loud(buf.subarray(3)))) chans[p.ch].lastSound = Date.now();
   if (buf[1] === 1 && recorders[p.ch]) recorders[p.ch].frame(p.id, buf.subarray(3));      // 通話の録音(ADPCMをデコードしてミックス)
   const out = Buffer.allocUnsafe(buf.length + 2);
   out[0] = 1; out[1] = buf[1]; out[2] = tone ? 2 : p.role === 'train' ? 1 : 0; out.writeUInt16BE(p.id, 3); buf.copy(out, 5, 3);
   for (const t of targets) if (online(t)) t.conn.sendAudio(out);
 }
+
+function loud(payload) { const x = ADPCM.decode(payload, 160); let e = 0; for (const v of x) e += v * v; return Math.sqrt(e / x.length) >= LOUD; }
+// 2/80/81ch: 話中のまま無音が silenceCutSec 続いたら、そのチャンネルの一斉・通話をすべて終える
+setInterval(() => {
+  const now = Date.now();
+  for (const ch of CHANNELS) {
+    const c = chans[ch]; if (ch === EMERG) continue;
+    if (!busy(ch) || !cfg.silenceCutSec) { c.lastSound = now; continue; }
+    if (now - c.lastSound < cfg.silenceCutSec * 1000) continue;
+    for (const d of dispsIn(ch)) if (d.mode) endMode(d);
+    for (const call of [...c.calls.values()]) if (call.state === 'active') endCall(call, 'silence');
+    c.bc.clear(); c.lastSound = now;
+    for (const d of dispsIn(ch)) toast(d, `無音が${cfg.silenceCutSec}秒続いたため通話を切断しました`, 'warn');
+    console.log(`無音のため切断: ${ch}ch`); dirty();
+  }
+}, 1000).unref();
 
 function talking(p) { // 85chの話中ランプ: 音声フレームが届いている間だけ点灯
   const t = chans[p.ch].talk, first = !t.has(p.id); clearTimeout(t.get(p.id));
@@ -236,7 +257,9 @@ function dispState(d) {
     trains: [...c.members].map((id) => parties.get(id)).filter(Boolean).map((t) => ({ id: t.id, trainNo: t.trainNo, label: labelOf(t), section: sectionOf(t) })),
     dispatchers: dispsIn(d.ch).filter((x) => x.mode && x.mode.type === 'call' && x.mode.id === c.id).map((x) => ({ id: x.id, muted: x.muted, hold: x.hold })) }));
   return { t: 'ds', ch: d.ch, you: { id: d.id, mode: d.mode, muted: d.muted, hold: d.hold }, bc: { active: ch.bc.size > 0, members: [...ch.bc] },
-    busy: busy(d.ch), dispatchers: dispsIn(d.ch).map((x) => x.id), trains, calls, guards: guardsFor(d), settings: publicSettings() };
+    busy: busy(d.ch), dispatchers: dispsIn(d.ch).map((x) => x.id), trains, calls,
+    stations: inCh(d.ch).filter((t) => t.role === 'train').map((t) => ({ id: t.id, trainNo: t.trainNo, label: labelOf(t), online: online(t), listen: !!t.listen }))
+      .sort((a, b) => a.trainNo.localeCompare(b.trainNo, 'ja', { numeric: true })), guards: guardsFor(d), settings: publicSettings() };
 }
 let flushScheduled = false;
 function dirty() { if (!flushScheduled) { flushScheduled = true; setImmediate(flush); } }
@@ -284,7 +307,7 @@ function onHello(conn, m) {
   }
   if (p.ch && (p.ch !== ch || p.trainNo !== trainNo)) { leaveCalls(p); p.guard = false; p.testUntil = 0; } // チャンネル/列車番号の変更
   p.ch = ch; p.trainNo = trainNo; p.vehicle = m.vehicle; p.conn = conn; conn.party = p; p.listen = trainNo === LISTEN_NO;
-  if (!p.listen) for (const c of chans[ch].calls.values()) if (c.origin === 'dispatcher' && c.kind === 'individual' && c.trainNo === trainNo) c.members.add(p.id); // 通話中の同一列番に参加
+  if (!p.listen) for (const c of chans[ch].calls.values()) if (c.kind === 'individual' && c.state === 'active' && c.trainNo === trainNo) c.members.add(p.id); // 通話中の同一列番に参加
   send(p, { t: 'welcome', role: 'train', ch, id: p.id, radioNo: p.radioNo, label: labelOf(p), bootId: BOOT_ID });
   console.log(`接続: ${p.listen ? '傍受' : '列車'} ${trainNo} ${labelOf(p)} ${ch}ch`);
   p.lastState = ''; dirty();
@@ -355,7 +378,10 @@ function dispMsg(d, m) {
     }
     case 'answer': case 'join': {
       const c = ch.calls.get(m.id); if (!c) break;
-      if (c.state === 'ringing') { c.state = 'active'; c.startedAt = Date.now(); clearTimeout(c.timer); c.kind = ch.bc.size > 0 ? 'reply' : 'individual'; }
+      if (c.state === 'ringing') {
+        c.state = 'active'; c.startedAt = Date.now(); clearTimeout(c.timer); c.kind = ch.bc.size > 0 ? 'reply' : 'individual';
+        if (c.kind === 'individual') addSameNo(c);                 // 同じ列番の移動局すべてが通話に入る
+      }
       if (c.kind === 'individual') {
         if (d.mode && d.mode.type === 'bc') return toast(d, '一斉通話中です。個別通話に入るには先に終話してください', 'warn');
         switchMode(d, { type: 'call', id: c.id }); d.muted = m.t === 'join';
@@ -364,6 +390,11 @@ function dispMsg(d, m) {
     }
     case 'endCall': { const c = ch.calls.get(m.id); if (c) endCall(c, 'end'); break; }
     case 'forceGuard': { for (const g of activeGuards()) if (g.trainNo === String(m.trainNo) && guardsFor(d).some((x) => x.trainNo === g.trainNo)) g.guard = false; dirty(); break; }
+    case 'kick': { // 移動局の強制ログアウト(自チャンネルのみ)
+      const t = parties.get(Number(m.id)); if (!t || t.role !== 'train' || t.ch !== d.ch) return toast(d, '対象の移動局が見つかりません', 'warn');
+      send(t, { t: 'kicked' }); console.log(`強制ログアウト: ${t.trainNo} ${labelOf(t)} ${t.ch}ch`); destroyParty(t);
+      toast(d, `${t.trainNo} ${labelOf(t)} をログアウトさせました`, 'ok'); break;
+    }
     case 'setSettings': applySettings(m.s || {}); toast(d, '設定を保存しました', 'ok'); break;
   }
 }

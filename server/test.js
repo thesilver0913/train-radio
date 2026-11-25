@@ -9,7 +9,7 @@ const mock = http.createServer((q, r) => {
   r.end(JSON.stringify({ now: Math.floor(Date.now() / 1000) + jsonNowOffset, train }));
 }).listen(MOCK);
 const cfgPath = path.join(os.tmpdir(), 'radio-test-' + Date.now() + '.json'), RECDIR = path.join(os.tmpdir(), 'radio-rec-' + Date.now());
-fs.writeFileSync(cfgPath, JSON.stringify({ dispatcherPassword: 'pw', jsonUrls: { 80: `http://127.0.0.1:${MOCK}/a`, 81: `http://127.0.0.1:${MOCK}/b` }, pollIntervalSec: 1, ringTimeoutSec: 1, testDurationMs: 300, recordDir: RECDIR, recordGapSec: 1 }));
+fs.writeFileSync(cfgPath, JSON.stringify({ dispatcherPassword: 'pw', jsonUrls: { 80: `http://127.0.0.1:${MOCK}/a`, 81: `http://127.0.0.1:${MOCK}/b` }, pollIntervalSec: 1, ringTimeoutSec: 1, testDurationMs: 300, recordDir: RECDIR, recordGapSec: 1, silenceCutSec: 3 }));
 process.env.RADIO_PORT = PORT; process.env.RADIO_CONFIG = cfgPath;
 const { server } = require('./server');
 
@@ -139,6 +139,21 @@ let n = 0; const ok = (m) => console.log(`  ✓ ${++n}. ${m}`);
   D85.tx({ t: 'bcStart' }); await sleep(60); assert(!P.ev('chime').length && !P.st.busy); ok('85ch: 一斉開始だけでは話中にならない(チャイムなし)');
   [P, Q, R].forEach((c) => c.clear()); D85.frame(); await sleep(80); assert(P.audio.length === 1 && Q.audio.length === 1 && R.audio.length === 1 && P.st.busy); ok('85ch: 指令の一斉は全列車に届く');
   D85.tx({ t: 'end' }); await until(() => !P.st.busy, 1000, '85 end');
+  // --- 同一列番の移動局すべてが個別通話に入る(列車からの呼出)
+  const N1 = await train('N1', 80, '4100'), N2 = await train('N2', 80, '4100', { vehicle: 'chikatetsu' }), LN = await train('LN', 80, '9999');
+  N1.tx({ t: 'handset', up: true }); await until(() => D.st.calls.some((c) => c.state === 'ringing' && c.trainNo === '4100'), 1000, '4100 ring');
+  assert(N2.st.handset === 'down'); ok('列車からの呼出中は、呼出した移動局だけが呼出状態');
+  D.tx({ t: 'answer', id: D.st.calls.find((c) => c.trainNo === '4100').id }); await until(() => N1.st.handset === 'up' && N2.st.handset === 'up', 1000, '4100 answer');
+  [N1, N2, LN, D, A].forEach((c) => c.clear()); N1.frame(); await sleep(80); D.frame(); await sleep(80);
+  assert(N2.audio.length === 2 && LN.audio.length === 2 && A.audio.length === 0, `n2=${N2.audio.length} ln=${LN.audio.length}`); ok('応答すると同じ列番(4100)の移動局すべてが通話に入り、9999にも聞こえ、他列車には聞こえない');
+  const N3 = await train('N3', 80, '4100'); await until(() => N3.st.handset === 'up', 1000, 'N3 join'); ok('通話中に同じ列番でログインした移動局も通話に入る');
+  D.tx({ t: 'end' }); await until(() => N1.st.handset === 'down' && N3.st.handset === 'down', 1000, '4100 end');
+  // --- 強制ログアウト
+  D.clear(); D.tx({ t: 'kick', id: N3.welcome.id }); await until(() => N3.msgs.some((m) => m.t === 'kicked'), 1000, 'kicked');
+  await until(() => !D.st.stations.some((x) => x.id === N3.welcome.id), 1000, 'kick list'); assert(D.st.stations.some((x) => x.trainNo === '9999' && x.listen));
+  ok('指令から移動局を強制ログアウトでき、移動局一覧(傍受を含む)から消える');
+  D.clear(); D.tx({ t: 'kick', id: T81.welcome.id }); await sleep(80); assert(D.msgs.some((m) => m.t === 'toast' && m.level === 'warn') && !T81.msgs.some((m) => m.t === 'kicked')); ok('他チャンネルの移動局は強制ログアウトできない');
+  [N1, N2, LN].forEach((c) => c.tx({ t: 'logout' })); await sleep(50);
   // --- 位置情報の鮮度
   jsonNowOffset = -700; await sleep(1500); assert.strictEqual(D.st.trains.find((t) => t.trainNo === '6110').section, null); ok('JSONのnowが10分以上ずれると位置不明扱い');
   jsonNowOffset = 0; await sleep(1500); assert(D.st.trains.find((t) => t.trainNo === '6110').section); 
@@ -164,6 +179,12 @@ let n = 0; const ok = (m) => console.log(`  ✓ ${++n}. ${m}`);
   ok(`同時に話した2人の音声がミックスされて録音される(440Hz=${a440.toFixed(2)} / 1000Hz=${a1000.toFixed(2)})`);
   D81.tx({ t: 'bcStart' }); await sleep(100); for (let k = 0; k < 10; k++) { aframe(D81, 440, 0.3, k); await sleep(20); } D81.tx({ t: 'end' }); await sleep(1600);
   files = recFiles(); assert.strictEqual(files.length, 2); ok('猶予時間を超えてから始まった通話は別ファイルになる');
+  // --- 無音が続くと切断(テストでは3秒)
+  D81.clear(); D81.tx({ t: 'bcStart' }); await until(() => T81.st.busy, 1000, 'silence bc');
+  for (let k = 0; k < 200; k++) { aframe(D81, 440, 0.3, k); await sleep(20); }                                // 4秒間しゃべり続ける
+  assert(T81.st.busy && D81.st.you.mode); ok('声が出ている間は話中が3秒を超えても切断されない');
+  for (let k = 0; k < 250 && T81.st.busy; k++) { aframe(D81, 440, 0.001, k); await sleep(20); }                // 送話は続くが無音
+  assert(!T81.st.busy && !D81.st.you.mode && D81.msgs.some((m) => m.t === 'toast' && /無音/.test(m.msg))); ok('話中のまま無音が続くと一斉・通話を切断し、指令に通知する');
   for (let k = 0; k < 25; k++) { aframe(P, 440, 0.3, k); await sleep(20); } await sleep(1600);
   assert(!fs.readdirSync(RECDIR).some((f) => f.startsWith('85ch_'))); ok('85chは録音しない');
 

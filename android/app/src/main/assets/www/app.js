@@ -76,6 +76,7 @@ function onMsg(m) {
     case 'toast': toast(m.msg, m.level); break;
     case 'pong': lastPong = Date.now(); break;
     case 'err': wantConn = false; teardown(); showLogin(m.msg); break;
+    case 'kicked': wantConn = false; teardown(); closeModal(); showLogin('指令により強制ログアウトされました'); break;
   }
 }
 function onEvent(m) {
@@ -213,6 +214,10 @@ function renderDisp() {
   $('#dGuards').innerHTML = DS.guards.length ? DS.guards.map((g) =>
     `<div class="guard"><b class="mono">${esc(g.trainNo)}</b> ${secTxt(g.section)} <span class="mono">${esc(g.label)}</span>${g.ch !== DS.ch ? ` <span class="flag">${esc(CH_NAME[g.ch])}から越境</span>` : ''}<div class="acts"><cds-button size="sm" kind="danger--tertiary" data-act="forceGuard" data-no="${esc(g.trainNo)}">強制解除</cds-button></div></div>`).join('')
     : '<div class="empty">発報はありません</div>';
+  // 移動局(強制ログアウト)
+  $('#dStations').innerHTML = DS.stations.length ? DS.stations.map((t) =>
+    `<div class="row ${t.online ? '' : 'off'}"><span class="no">${esc(t.trainNo)}</span><span class="lab">${esc(t.label)}</span><span class="lab">${t.listen ? '傍受専用' : ''}${t.online ? '' : ' 切断中'}</span><cds-button size="sm" kind="danger--ghost" data-act="kick" data-id="${t.id}" data-name="${esc(t.trainNo + ' ' + t.label)}">強制ログアウト</cds-button></div>`).join('')
+    : '<div class="empty">接続中の移動局はありません</div>';
   tickRing();
 }
 function tickRing() { document.querySelectorAll('.rl').forEach((el) => { el.textContent = Math.max(0, Math.ceil((+el.dataset.end - Date.now()) / 1000)); }); }
@@ -225,6 +230,13 @@ document.addEventListener('click', (e) => {
   if (a === 'answer' || a === 'join' || a === 'endCall') sendJson({ t: a, id: +b.dataset.id });
   else if (a === 'callTrain') sendJson({ t: 'callTrain', trainNo: b.dataset.no });
   else if (a === 'forceGuard') sendJson({ t: 'forceGuard', trainNo: b.dataset.no });
+  else if (a === 'kick') {
+    const id = +b.dataset.id;
+    openModal('強制ログアウト', `<section><p>${esc(b.dataset.name)} をログアウトさせますか</p><div class="acts"><cds-button id="kGo" kind="danger" size="md">ログアウトさせる</cds-button><cds-button id="kNo" kind="secondary" size="md">キャンセル</cds-button></div></section>`, (m) => {
+      m.querySelector('#kGo').addEventListener('click', () => { sendJson({ t: 'kick', id }); closeModal(); });
+      m.querySelector('#kNo').addEventListener('click', closeModal);
+    });
+  }
 });
 $('#dBc').addEventListener('click', (e) => !e.currentTarget.disabled && sendJson({ t: DS && DS.you.mode && DS.you.mode.type === 'bc' ? 'end' : 'bcStart' }));
 $('#dMute').addEventListener('click', (e) => DS && !e.currentTarget.disabled && sendJson({ t: 'mute', on: !(DS.you.muted && !DS.you.hold) }));
@@ -235,6 +247,7 @@ $('#dCallGo').addEventListener('click', callNo);
 $('#dCallNo').addEventListener('keydown', (e) => { if (e.key === 'Enter') callNo(); });
 $('#dSettings').addEventListener('click', () => openSettings());
 $('#dDetail').addEventListener('click', () => openDetail());
+$('#dTabs').addEventListener('cds-tabs-selected', (e) => { const st = e.detail.item.value === 'st'; $('#disp .dgrid').hidden = st; $('#dSt').hidden = !st; });
 
 // ------------------------------------------------------------ モーダル
 const modal = $('#modal'); let modalCleanup = null;

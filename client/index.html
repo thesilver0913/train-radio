@@ -76,6 +76,10 @@
       <cds-button id="dSettings" kind="ghost" size="md">設定</cds-button>
     </div>
   </header>
+  <cds-tabs id="dTabs" value="calls" class="dtabs">
+    <cds-tab id="dTabCalls" value="calls">通話</cds-tab>
+    <cds-tab id="dTabSt" value="st">移動局</cds-tab>
+  </cds-tabs>
   <div class="dgrid">
     <section class="panel"><h2>通話</h2><div id="dCalls"></div></section>
     <section class="panel">
@@ -88,6 +92,7 @@
     </section>
     <section class="panel"><h2>防護発報</h2><div id="dGuards"></div></section>
   </div>
+  <section id="dSt" class="panel dst" hidden><h2>移動局</h2><div id="dStations"></div></section>
 </main>
 
 <cds-modal id="modal" size="sm">
